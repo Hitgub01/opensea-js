@@ -4,6 +4,7 @@ import {
   Chain,
   type OpenSeaAccount,
   type OpenSeaAPIConfig,
+  type OpenSeaApiError,
   type OpenSeaCollection,
   type OpenSeaCollectionStats,
   type OpenSeaPaymentToken,
@@ -1634,10 +1635,16 @@ export class OpenSeaAPI {
             : typeof errors === "string"
               ? errors
               : JSON.stringify(errors)
-          throw new Error(`Server Error: ${errorMessage}`)
+          throw OpenSeaAPI._createApiError(
+            response,
+            `Server Error: ${errorMessage}`,
+            responseBody,
+          )
         }
-        throw new Error(
+        throw OpenSeaAPI._createApiError(
+          response,
           `Server Error (${response.status}): ${response.statusText}`,
+          responseBody,
         )
       }
       if (
@@ -1685,7 +1692,8 @@ export class OpenSeaAPI {
       body: "{}",
     })
     if (!response.ok) {
-      throw new Error(
+      throw OpenSeaAPI._createApiError(
+        response,
         `Server Error (${response.status}): ${response.statusText}`,
       )
     }
@@ -1744,6 +1752,28 @@ export class OpenSeaAPI {
    * @param response The HTTP response object from the API
    * @returns An enhanced Error object with statusCode, retryAfter and responseBody properties
    */
+  /**
+   * Builds an error carrying the HTTP status. Every non-OK response goes through here or through
+   * {@link _createRateLimitError}, so `statusCode` is present on every API error rather than only
+   * on rate limits. A caller that scrubs remote error text still has the status to retry on.
+   * @param response The HTTP response object from the API
+   * @param message The error message
+   * @param responseBody The already-parsed body, when the caller read one
+   * @returns An Error with `statusCode` and, when available, `responseBody`
+   */
+  private static _createApiError(
+    response: Response,
+    message: string,
+    responseBody?: unknown,
+  ): OpenSeaApiError {
+    const error = new Error(message) as OpenSeaApiError
+    error.statusCode = response.status
+    if (responseBody !== undefined) {
+      error.responseBody = responseBody
+    }
+    return error
+  }
+
   private async _createRateLimitError(
     response: Response,
   ): Promise<OpenSeaRateLimitError> {

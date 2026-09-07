@@ -319,6 +319,7 @@ describe("API: CollectionsAPI", () => {
       const mockResponse: OpenSeaCollectionStats = {
         total: {
           volume: 1000,
+          volumeSymbol: "ETH",
           sales: 500,
           numOwners: 250,
           floorPrice: 1.5,
@@ -328,6 +329,7 @@ describe("API: CollectionsAPI", () => {
           {
             interval: "one_day",
             volume: 100,
+            volumeSymbol: "ETH",
             sales: 50,
           },
         ],
@@ -350,6 +352,7 @@ describe("API: CollectionsAPI", () => {
       const mockResponse: OpenSeaCollectionStats = {
         total: {
           volume: 0,
+          volumeSymbol: "ETH",
           sales: 0,
           numOwners: 0,
           floorPrice: 0,
@@ -371,6 +374,7 @@ describe("API: CollectionsAPI", () => {
       const mockResponse: OpenSeaCollectionStats = {
         total: {
           volume: 0,
+          volumeSymbol: "ETH",
           sales: 0,
           numOwners: 0,
           floorPrice: 0,

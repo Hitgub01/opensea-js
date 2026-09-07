@@ -1,5 +1,18 @@
 # @opensea/sdk
 
+## 12.1.1
+
+### Patch Changes
+
+- 5c47045: Percent-encode caller-supplied values in every API path builder. `apiPaths.ts` interpolated slugs, addresses, token ids and transaction hashes into URL paths as bare template literals, so a value containing `/` or `..` re-targeted the request at a different endpoint once the URL was normalized, and a consumer caching by path collided with the endpoint it landed on. The `segment()` helper that `walletAuth.ts` already applied is now shared and applied across all 100 interpolation sites. `getAgentProfileRelationships` no longer encodes at the call site, which would otherwise double-encode.
+
+  `segment()` throws a `RangeError` for a value of exactly `.` or `..`. Encoding cannot neutralize those: the WHATWG URL parser decodes percent-escapes before it removes dot segments, so `%2E%2E` collapses the same way `..` does. No slug, address, token id or transaction hash is `.` or `..`, so the only caller that reaches it is passing unvalidated input.
+
+- 59b7337: Attach `statusCode` to every error thrown for a non-OK API response, not just rate limits. Previously only `_createRateLimitError` set it, so a caller could not tell a 401 from a 404 or a retryable 503 from a permanent 400 without parsing a message built from the response body. Clients that scrub remote error text before surfacing it had no way to recover the status at all, which left them with no honest retry ladder. `OpenSeaApiError` is the type for this; `OpenSeaRateLimitError` remains as an alias with the identical shape.
+- Updated dependencies [59b7337]
+- Updated dependencies [9baf162]
+  - @opensea/api-types@0.9.2
+
 ## 12.1.0
 
 ### Minor Changes

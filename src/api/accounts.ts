@@ -88,7 +88,7 @@ export class AccountsAPI {
     addressOrUsername: string,
   ): Promise<AgentProfileRelationshipsResponse> {
     return this.fetcher.get<AgentProfileRelationshipsResponse>(
-      getAgentProfileRelationshipsPath(encodeURIComponent(addressOrUsername)),
+      getAgentProfileRelationshipsPath(addressOrUsername),
     )
   }
 

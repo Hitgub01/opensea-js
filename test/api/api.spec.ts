@@ -693,5 +693,60 @@ describe("API", () => {
 
       fetchStubLocal.mockRestore()
     })
+
+    test("attaches statusCode to the thrown error", async () => {
+      const fetchStubLocal = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response("{}", {
+          status: 503,
+          statusText: "Service Unavailable",
+        }),
+      )
+
+      await expect(OpenSeaAPI.requestInstantApiKey()).rejects.toMatchObject({
+        statusCode: 503,
+      })
+
+      fetchStubLocal.mockRestore()
+    })
+  })
+
+  describe("error status codes", () => {
+    // A caller that scrubs remote error text before showing it has no way to recover the status
+    // from the message, so every non-OK response has to carry statusCode, not just rate limits.
+    const localApi = () => new OpenSeaAPI({ apiKey: "key" })
+
+    test.each([
+      401, 403, 404, 500, 502, 503,
+    ])("a %i response throws an error carrying statusCode", async status => {
+      vi.useRealTimers()
+      fetchStub = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(new Response("{}", { status, statusText: "nope" }))
+
+      await expect(
+        localApi().getCollection("boredapeyachtclub"),
+      ).rejects.toMatchObject({ statusCode: status })
+    })
+
+    test("the structured-errors branch carries the status and the body", async () => {
+      vi.useRealTimers()
+      fetchStub = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(JSON.stringify({ errors: ["not found"] }), {
+          status: 404,
+          statusText: "Not Found",
+        }),
+      )
+
+      const error = await localApi()
+        .getCollection("nope")
+        .catch((e: unknown) => e)
+
+      expect(error).toBeInstanceOf(Error)
+      expect(error).toMatchObject({
+        statusCode: 404,
+        responseBody: { errors: ["not found"] },
+      })
+      expect((error as Error).message).toContain("not found")
+    })
   })
 })

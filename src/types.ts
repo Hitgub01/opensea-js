@@ -297,17 +297,26 @@ export type OpenSeaAccount = Camelize<AccountResponse>
 export type SocialMediaAccount = Camelize<ApiSocialMediaAccount>
 
 /**
- * Enhanced Error type for rate limit errors that includes retry-after information
+ * Error thrown for any non-OK API response. `statusCode` is always set, so a caller can separate
+ * a retryable failure from a permanent one without parsing the message. That matters for clients
+ * that scrub remote error text before surfacing it, which have no other way to recover the status.
  * @category API Models
  */
-export interface OpenSeaRateLimitError extends Error {
+export interface OpenSeaApiError extends Error {
   /** The HTTP status code of the error response */
   statusCode?: number
-  /** The number of seconds to wait before retrying the request */
+  /** The number of seconds to wait before retrying the request, on rate limit responses */
   retryAfter?: number
   /** The response body from the API */
   responseBody?: unknown
 }
+
+/**
+ * @deprecated Use {@link OpenSeaApiError}. Retained as an alias: the shape is identical and
+ * `retryAfter` was always optional, so existing rate-limit handling is unaffected.
+ * @category API Models
+ */
+export type OpenSeaRateLimitError = OpenSeaApiError
 
 /**
  * Options for controlling HTTP request behavior.

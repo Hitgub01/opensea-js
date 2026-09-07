@@ -5,6 +5,7 @@ import type {
   operations,
 } from "@opensea/api-types"
 import type { Camelize } from "../utils/case"
+import { segment } from "./apiPaths"
 import type { WalletAuthFetcher } from "./fetcher"
 
 type OperationName = keyof operations
@@ -17,8 +18,6 @@ export type WalletAuthResponse<T extends OperationName> = Camelize<
 export type WalletAuthQuery<T extends OperationName> = Camelize<
   OperationQueryParams<T>
 >
-
-const segment = (value: string | number) => encodeURIComponent(String(value))
 
 /** Typed helpers for wallet-authenticated REST operations. */
 export class WalletAuthAPI {
