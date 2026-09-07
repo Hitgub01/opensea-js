@@ -215,6 +215,10 @@ export const getTraitsPath = (collectionSlug: string) => {
   return `${API_V2_PREFIX}/traits/${segment(collectionSlug)}`
 }
 
+export const getCollectionTraitFloorsPath = (collectionSlug: string) => {
+  return `${API_V2_PREFIX}/traits/${segment(collectionSlug)}/floors`
+}
+
 export const getTrendingTokensPath = () => {
   return `${API_V2_PREFIX}/tokens/trending`
 }

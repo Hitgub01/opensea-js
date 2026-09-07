@@ -29,6 +29,8 @@ import type {
   TokenResponse as ApiTokenResponse,
   TokenSearchResponse as ApiTokenSearchResponse,
   Trait as ApiTrait,
+  TraitFloorResponse as ApiTraitFloorResponse,
+  TraitFloorsResponse as ApiTraitFloorsResponse,
   TransactionReceiptRequest as ApiTransactionReceiptRequest,
   TransactionReceiptResponse as ApiTransactionReceiptResponse,
   ValidateMetadataResponse as ApiValidateMetadataResponse,
@@ -1247,6 +1249,18 @@ export type CreateListingActionsResponse =
   Camelize<ApiCreateListingActionsResponse>
 export type CreateListingFulfillmentActionsResponse =
   Camelize<ApiFulfillmentActionsResponse>
+
+/**
+ * Floor price for one trait value in one payment currency.
+ * @category API Models
+ */
+export type TraitFloor = Camelize<ApiTraitFloorResponse>
+
+/**
+ * Per-trait floor prices for a collection.
+ * @category API Response Types
+ */
+export type TraitFloorsResponse = Camelize<ApiTraitFloorsResponse>
 export type CreateOfferActionsResponse = Camelize<ApiCreateOfferActionsResponse>
 export type CreateOfferFulfillmentActionsResponse =
   Camelize<ApiFulfillmentActionsResponse>

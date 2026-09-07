@@ -7,6 +7,7 @@ import {
   getCollectionPath,
   getCollectionStatsPath,
   getCollectionsPath,
+  getCollectionTraitFloorsPath,
   getTopCollectionsPath,
   getTraitsPath,
   getTrendingCollectionsPath,
@@ -29,6 +30,7 @@ import {
   type GetTraitsResponse,
   type GetTrendingCollectionsArgs,
   type PaginatedAnalyticsArgs,
+  type TraitFloorsResponse,
 } from "./types"
 
 /**
@@ -43,6 +45,20 @@ export class CollectionsAPI {
   async getCollection(slug: string): Promise<OpenSeaCollection> {
     const path = getCollectionPath(slug)
     return this.fetcher.get<GetCollectionResponse>(path)
+  }
+
+  /**
+   * Fetch floor prices per trait value for a collection.
+   *
+   * Covers text traits that have at least one active listing, ordered by trait type, then value,
+   * then price. Numeric traits are not enumerated here; use {@link getTraits} for their min/max
+   * range. Every floor in the response is denominated on the collection's own chain, identified by
+   * `chain` plus each entry's `paymentTokenSymbol`.
+   */
+  async getCollectionTraitFloors(slug: string): Promise<TraitFloorsResponse> {
+    return this.fetcher.get<TraitFloorsResponse>(
+      getCollectionTraitFloorsPath(slug),
+    )
   }
 
   /**

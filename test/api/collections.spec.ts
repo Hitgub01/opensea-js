@@ -5,6 +5,7 @@ import {
   type GetCollectionResponse,
   type GetCollectionsResponse,
   type GetTraitsResponse,
+  type TraitFloorsResponse,
 } from "../../src/api/types"
 import {
   Chain,
@@ -26,6 +27,39 @@ describe("API: CollectionsAPI", () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+  })
+
+  describe("getCollectionTraitFloors", () => {
+    test("fetches trait floors for a slug and returns the camelized shape", async () => {
+      const mockResponse: TraitFloorsResponse = {
+        chain: "ethereum",
+        floors: [
+          {
+            traitType: "Background",
+            value: "Purple",
+            floorPrice: 1.25,
+            paymentTokenSymbol: "ETH",
+          },
+        ],
+      }
+      mockGet.mockResolvedValue(mockResponse)
+
+      const result =
+        await collectionsAPI.getCollectionTraitFloors("boredapeyachtclub")
+
+      expect(mockGet).toHaveBeenCalledWith(
+        "/api/v2/traits/boredapeyachtclub/floors",
+      )
+      expect(result).toEqual(mockResponse)
+    })
+
+    test("encodes the slug rather than letting it re-target the request", async () => {
+      mockGet.mockResolvedValue({ chain: "ethereum", floors: [] })
+
+      await collectionsAPI.getCollectionTraitFloors("a/b")
+
+      expect(mockGet).toHaveBeenCalledWith("/api/v2/traits/a%2Fb/floors")
+    })
   })
 
   describe("getCollection", () => {

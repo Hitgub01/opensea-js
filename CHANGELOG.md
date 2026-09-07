@@ -1,5 +1,11 @@
 # @opensea/sdk
 
+## 12.2.0
+
+### Minor Changes
+
+- aaff086: Add `collections.getCollectionTraitFloors(slug)`, covering `GET /api/v2/traits/{slug}/floors`. Returns the floor price per trait value for a collection, one entry per text trait value and payment currency that has at least one active listing. Numeric traits are not enumerated there; use `getTraits` for their min/max range. Every floor is denominated on the collection's own chain, identified by the response's `chain` plus each entry's `paymentTokenSymbol`.
+
 ## 12.1.1
 
 ### Patch Changes
