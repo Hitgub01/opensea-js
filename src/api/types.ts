@@ -36,6 +36,7 @@ import type {
   ValidateMetadataResponse as ApiValidateMetadataResponse,
   WalletVisibilityResponse as ApiWalletVisibilityResponse,
   AssetMetadataResponse,
+  ChainIdentifier,
   ChainListResponse,
   ChainResponse,
   ContractResponse,
@@ -678,8 +679,11 @@ export type AssetEvent =
  * @category API Query Args
  */
 export interface GetEventsArgs {
-  /** Type of event to filter by */
-  eventType?: AssetEventType | string
+  /**
+   * Event types to filter by. The API accepts a repeated parameter, so an array filters on
+   * several at once; a single value stays supported.
+   */
+  eventType?: AssetEventType | string | (AssetEventType | string)[]
   /** Filter events after this timestamp */
   after?: number
   /** Filter events before this timestamp */
@@ -688,7 +692,13 @@ export interface GetEventsArgs {
   limit?: number
   /** Cursor for pagination */
   next?: string
-  /** Chain to filter by */
+  /**
+   * Chain to filter by. Honoured by `getEventsByAccount`, whose endpoint documents it.
+   *
+   * Ignored by `getEvents`: `GET /api/v2/events` documents no `chain` parameter and does not
+   * filter on one, so a request for `chain=solana` still returns Ethereum events. The SDK no
+   * longer sends it there rather than implying a filter that never applied.
+   */
   chain?: string
 }
 
@@ -807,8 +817,22 @@ export type GetTopTokensResponse = Camelize<
 export interface GetTokensArgs {
   /** Limit the number of results */
   limit?: number
-  /** Cursor for pagination */
+  /**
+   * Cursor for pagination, taken from the `next` field of the previous response.
+   *
+   * The request parameter is `cursor` while the response field is `next`, which is why
+   * {@link GetTokensArgs.next} looked correct and silently paginated nowhere.
+   */
+  cursor?: string
+  /**
+   * @deprecated Use {@link GetTokensArgs.cursor}. These endpoints never read a `next` query
+   * parameter, so passing this alone returned the first page every time. It is now forwarded as
+   * `cursor` so existing callers start paginating instead of looping, and `cursor` wins if both
+   * are set.
+   */
   next?: string
+  /** Filter to these chains */
+  chains?: ChainIdentifier[]
 }
 
 /**
@@ -1422,6 +1446,8 @@ export interface NFTOwnersArgs {
 export interface PortfolioArgs {
   /** Timeframe for P&L / net-worth history calculation. */
   timeframe?: "HOUR" | "DAY" | "WEEK" | "MONTH"
+  /** Filter to these chains */
+  chains?: ChainIdentifier[]
 }
 
 /**

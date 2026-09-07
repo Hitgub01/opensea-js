@@ -31,6 +31,11 @@ const KNOWN_CAMELCASE_OPERATIONS = [
   // through Fetcher, which needs the explicit opt-out to put the same bytes on
   // the wire. Naming only the raw-fetch path here is what hid the second one.
   "cancel_order",
+  // Token exchange, added to the spec in api-types 0.9.3. Its wire body is camelCase and there is
+  // no SDK sender yet, so nothing needs an opt-out today. Verified against the live endpoint:
+  // {"subjectToken": ...} reaches the service, {"subject_token": ...} comes back 422 "Missing
+  // required field 'subjectToken'". Any future sender must pass snakeizeBody: false.
+  "exchange_scoped_token",
   "link_wallet_with_siwx",
   "set_profile_nft_pfp",
   "update_profile_settings",

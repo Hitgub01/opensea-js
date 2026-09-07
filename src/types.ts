@@ -129,6 +129,45 @@ export interface OpenSeaAPIConfig {
   apiBaseUrl?: string
   /** Scoped JWT token for wallet-authenticated endpoints. */
   authToken?: string
+  /**
+   * Transport used for every request, defaulting to the global `fetch`.
+   *
+   * The seam for a cache, a shared rate limiter, retries or request-level instrumentation.
+   * Without it the only way to wrap requests is to subclass {@link OpenSeaAPI} and override a
+   * public method, which ties the wrapper to that method's signature and cannot carry extra
+   * per-request context.
+   *
+   * It receives the fully built URL and init, including the API key and auth headers, so treat
+   * anything it logs or caches as sensitive. It is called for the instance's own requests; the
+   * static `OpenSeaAPI.requestInstantApiKey` has no instance to read it from and always uses the
+   * global `fetch`.
+   *
+   * A cache built on this must key on the credentials as well as the URL, and must not cache
+   * anything but GET. Two callers with different API keys or auth tokens can see different
+   * responses for the same URL, and a POST response is not a cacheable representation of one.
+   *
+   * @example
+   * ```ts
+   * // One cache per credential: the simplest way to avoid serving one caller's authenticated
+   * // response to another is to never share the cache between them.
+   * const cache = new Map<string, Response>()
+   *
+   * const api = new OpenSeaAPI({
+   *   apiKey,
+   *   fetch: async (url, init) => {
+   *     if ((init?.method ?? "GET").toUpperCase() !== "GET") {
+   *       return globalThis.fetch(url, init)
+   *     }
+   *     const cached = cache.get(String(url))
+   *     if (cached) return cached.clone()
+   *     const response = await globalThis.fetch(url, init)
+   *     if (response.ok) cache.set(String(url), response.clone())
+   *     return response
+   *   },
+   * })
+   * ```
+   */
+  fetch?: typeof globalThis.fetch
 }
 
 /**

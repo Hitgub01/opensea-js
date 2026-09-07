@@ -172,6 +172,8 @@ export class OpenSeaAPI {
 
   private apiKey: string | undefined
   private authToken: string | undefined
+  /** Transport for every instance request. See {@link OpenSeaAPIConfig.fetch}. */
+  private readonly fetchImpl: typeof globalThis.fetch
   private chain: Chain
 
   // Specialized API clients
@@ -197,6 +199,10 @@ export class OpenSeaAPI {
    * @param logger Optional function for logging debug strings before and after requests are made. Defaults to no logging
    */
   constructor(config: OpenSeaAPIConfig, logger?: (arg: string) => void) {
+    // Read through globalThis rather than captured at construction, so a caller who swaps
+    // globalThis.fetch afterwards still takes effect.
+    this.fetchImpl =
+      config.fetch ?? ((url, init) => globalThis.fetch(url, init))
     this.apiKey = config.apiKey
     this.authToken = config.authToken
     this.chain = config.chain ?? Chain.Mainnet
@@ -1603,7 +1609,11 @@ export class OpenSeaAPI {
     }
 
     try {
-      const response = await fetch(url, {
+      // .call(globalThis, ...) rather than a plain call: a caller can pass native fetch
+      // unbound (`fetch: globalThis.fetch`), and browsers throw "Illegal invocation" when it
+      // runs with anything but the global as its receiver. A bound function or an arrow
+      // ignores the thisArg, so this does not clobber a deliberately bound transport.
+      const response = await this.fetchImpl.call(globalThis, url, {
         method,
         headers: mergedHeaders,
         body: body != null ? JSON.stringify(body) : undefined,

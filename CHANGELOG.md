@@ -1,5 +1,20 @@
 # @opensea/sdk
 
+## 12.3.0
+
+### Minor Changes
+
+- d9df0e2: Accept an optional `fetch` in `OpenSeaAPIConfig`, used as the transport for every instance request. This is the seam for a cache, a shared rate limiter, retries or request-level instrumentation. Previously the only way to wrap requests was to subclass `OpenSeaAPI` and override a public method, which ties the wrapper to that method's signature and cannot carry extra per-request context. Defaults to the global `fetch`, so existing behavior is unchanged. The transport receives the fully built URL and init, including the API key and auth headers, so treat anything it logs or caches as sensitive.
+- 3075f59: Fix two query parameters the API silently ignored, and expose the documented ones that were missing.
+
+  `getTrendingTokens` and `getTopTokens` took a `next` cursor, but those endpoints read `cursor`. The response field is `next` and the request parameter is `cursor`, so feeding the cursor straight back returned the first page every time with no error. `GetTokensArgs.cursor` is the parameter now; `next` is deprecated and forwarded to `cursor`, so existing callers start paginating instead of looping.
+
+  `getEvents` sent a `chain` filter that `GET /api/v2/events` does not document and does not apply, so requests came back unfiltered. It is no longer sent. `getEventsByAccount` is unaffected: its endpoint does document `chain` and does filter.
+
+  Adds documented parameters that were unreachable: `chains` on `GetTokensArgs` and `PortfolioArgs`, and array values for `GetEventsArgs.eventType`, which the spec models as repeatable.
+
+  Adds a drift check that compares each args interface against its operation's documented query parameters in both directions, so a parameter added to the spec or one the server would ignore fails a test rather than shipping.
+
 ## 12.2.0
 
 ### Minor Changes

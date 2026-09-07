@@ -148,9 +148,10 @@ describe("API: EventsAPI", () => {
 
       await eventsAPI.getEvents({ chain: "ethereum" })
 
-      expect(mockGet.mock.calls[0][1]).toEqual({
-        chain: "ethereum",
-      })
+      // GET /api/v2/events documents no `chain` parameter and does not filter on one, so the
+      // SDK drops it rather than implying a filter that never applied. Verified against the
+      // live API: `chain=solana` still returned Ethereum events.
+      expect(mockGet.mock.calls[0][1]).toEqual({})
     })
 
     test("fetches events with multiple parameters", async () => {
@@ -168,10 +169,10 @@ describe("API: EventsAPI", () => {
         after: 1234567890,
       })
 
+      // `chain` is dropped for this endpoint; every other parameter passes through.
       expect(mockGet.mock.calls[0][1]).toEqual({
         eventType: "sale",
         limit: 25,
-        chain: "ethereum",
         after: 1234567890,
       })
     })
