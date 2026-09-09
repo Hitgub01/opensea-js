@@ -30,7 +30,7 @@ const protocolAddress = "0x00000000000000ADc04C56Bf30aC9d3c0aAF14dC"; // Seaport
 const accountAddress = "0x..."; // Wallet that signs and pays
 const recipientAddress = "0x..."; // NFT recipient
 
-const order = await openseaSDK.api.getOrderByHash(orderHash, protocolAddress);
+const order = await openseaSDK.api.orders.getOrderByHash(orderHash, protocolAddress);
 await openseaSDK.fulfillOrder({
   order,
   accountAddress,
@@ -87,6 +87,8 @@ Use `cancelOrder()` to cancel a single order. This method accepts either:
 Both `cancelOrder()` and `cancelOrders()` return the cancellation transaction hash.
 
 ```typescript
+import type { OrderV2 } from "@opensea/sdk";
+
 // Cancel using order hash (automatically fetches from API)
 const transactionHash = await openseaSDK.cancelOrder({
   orderHash: "0x123...",
@@ -94,8 +96,11 @@ const transactionHash = await openseaSDK.cancelOrder({
   protocolAddress: "0x00000000000000adc04c56bf30ac9d3c0aaf14dc", // Seaport address
 });
 
-// Cancel using full OrderV2 object
-const order = await openseaSDK.api.getOrderByHash(orderHash, protocolAddress);
+// Cancel using a full OrderV2 object you already hold. Note that
+// `api.orders.getOrderByHash` returns the v2 `Listing`/`Offer` shape rather than
+// an `OrderV2`, so pass `orderHash` above when that is where your order comes from.
+declare const order: OrderV2;
+
 await openseaSDK.cancelOrder({
   order,
   accountAddress: "0x...",
@@ -111,6 +116,8 @@ Use `cancelOrders()` to cancel multiple orders in a single transaction. This met
 - Just order hashes (automatically fetches full order data)
 
 ```typescript
+import type { OrderV2 } from "@opensea/sdk";
+
 // Cancel using order hashes (automatically fetches from API)
 await openseaSDK.cancelOrders({
   orderHashes: ["0x123...", "0x456...", "0x789..."],
@@ -118,10 +125,13 @@ await openseaSDK.cancelOrders({
   protocolAddress: "0x00000000000000adc04c56bf30ac9d3c0aaf14dc", // Seaport address
 });
 
-// Cancel using full OrderV2 objects
-const { listings } = await openseaSDK.api.getAllListings("my-collection");
+// Cancel using full OrderV2 objects you already hold. As above, the listings
+// endpoints return the v2 `Listing` shape, not `OrderV2`, so use `orderHashes`
+// when your orders come from the API.
+declare const orders: OrderV2[];
+
 await openseaSDK.cancelOrders({
-  orders: listings.slice(0, 3),
+  orders,
   accountAddress: "0x...",
 });
 ```
@@ -133,11 +143,13 @@ When providing order hashes, the SDK automatically fetches the full order data f
 For orders protected by SignedZone (a Seaport zone that validates orders offchain before allowing onchain fills), you can cancel them offchain (no gas required):
 
 ```typescript
+import { Chain } from "@opensea/sdk";
+
 await openseaSDK.offchainCancelOrder(
   protocolAddress,
   orderHash,
-  chain,
-  offererSignature, // Optional: derived from signer if not provided
+  Chain.Mainnet,
+  // The offerer signature is optional; it is derived from the signer when omitted.
 );
 ```
 
@@ -378,6 +390,7 @@ const txHash = await openseaSDK.bulkTransfer({
     {
       asset: {
         tokenAddress: "0x...", // ERC20 token
+        tokenId: null, // ERC20 has no token ID
         tokenStandard: TokenStandard.ERC20,
       },
       toAddress: "0xrecipient3...",
@@ -402,8 +415,9 @@ Events are fired whenever transactions or orders are being created, and when tra
 Our recommendation is that you "forward" OpenSea events to your own store or state management system. Here are examples of listening to the events:
 
 ```typescript
-import { OpenSeaSDK, EventType } from '@opensea/sdk'
-const sdk = new OpenSeaSDK(...);
+import { EventType, type OpenSeaSDK } from '@opensea/sdk'
+
+declare const sdk: OpenSeaSDK
 
 function handleSDKEvents() {
     sdk.addListener(EventType.TransactionCreated, ({ transactionHash, event }) => {

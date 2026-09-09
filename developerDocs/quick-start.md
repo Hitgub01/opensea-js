@@ -100,6 +100,14 @@ Using a read-only provider won't let you authorize transactions, which are neede
 ### ethers wallet
 
 ```typescript
+import { ethers } from "ethers";
+import { Chain, OpenSeaSDK } from "@opensea/sdk";
+
+const PRIVATE_KEY = process.env.PRIVATE_KEY as string;
+const provider = new ethers.JsonRpcProvider(
+  "https://eth-mainnet.g.alchemy.com/v2/YOUR_ALCHEMY_API_KEY",
+);
+
 const walletWithProvider = new ethers.Wallet(PRIVATE_KEY, provider);
 
 const openseaSDK = new OpenSeaSDK(walletWithProvider, {
@@ -111,13 +119,21 @@ const openseaSDK = new OpenSeaSDK(walletWithProvider, {
 ### viem wallet
 
 ```typescript
+import { createPublicClient, createWalletClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import { mainnet } from "viem/chains";
+import { Chain, OpenSeaSDK } from "@opensea/sdk/viem";
+
+const PRIVATE_KEY = process.env.PRIVATE_KEY as `0x${string}`;
+const transport = http("https://eth-mainnet.g.alchemy.com/v2/YOUR_ALCHEMY_API_KEY");
+
+const publicClient = createPublicClient({ chain: mainnet, transport });
 
 const account = privateKeyToAccount(PRIVATE_KEY);
 const walletClient = createWalletClient({
   account,
   chain: mainnet,
-  transport: http("https://eth-mainnet.g.alchemy.com/v2/YOUR_ALCHEMY_API_KEY"),
+  transport,
 });
 
 const openseaSDK = new OpenSeaSDK(

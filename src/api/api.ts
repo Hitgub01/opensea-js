@@ -141,6 +141,7 @@ import {
   type TokenSwapActivityPaginatedResponse,
   type TokenTimeSeriesArgs,
   type TraitFilter,
+  type TraitFloorsResponse,
   type TransactionReceiptRequest,
   type TransactionReceiptResponse,
   type TransferRequest,
@@ -176,22 +177,31 @@ export class OpenSeaAPI {
   private readonly fetchImpl: typeof globalThis.fetch
   private chain: Chain
 
-  // Specialized API clients
-  private ordersAPI: OrdersAPI
-  private offersAPI: OffersAPI
-  private listingsAPI: ListingsAPI
-  private collectionsAPI: CollectionsAPI
-  private nftsAPI: NFTsAPI
-  private accountsAPI: AccountsAPI
-  private eventsAPI: EventsAPI
-  private searchAPI: SearchAPI
-  private tokensAPI: TokensAPI
-  private chainsAPI: ChainsAPI
-  private dropsAPI: DropsAPI
-  private transactionsAPI: TransactionsAPI
-  private assetsAPI: AssetsAPI
+  /**
+   * Per-domain clients. Prefer these over the flat `getCollection` / `getTraits` style methods on
+   * this class, which are deprecated and will be removed in the next major.
+   *
+   * `search` is absent because `SearchAPI` holds a single method also called `search`, so the
+   * property and the existing `search()` method want the same name and only one can be added
+   * without a break. Call it as `api.search(args)`.
+   */
+  public readonly orders: OrdersAPI
+  public readonly offers: OffersAPI
+  public readonly listings: ListingsAPI
+  public readonly collections: CollectionsAPI
+  public readonly nfts: NFTsAPI
+  public readonly accounts: AccountsAPI
+  public readonly events: EventsAPI
+  public readonly tokens: TokensAPI
+  public readonly chains: ChainsAPI
+  public readonly drops: DropsAPI
+  public readonly transactions: TransactionsAPI
+  public readonly assets: AssetsAPI
   /** Wallet-authenticated scoped REST helpers. */
   public readonly walletAuth: WalletAuthAPI
+
+  /** See the note above: this one stays private, and `api.search(args)` is the call. */
+  private searchAPI: SearchAPI
 
   /**
    * Create an instance of the OpenSeaAPI
@@ -224,19 +234,19 @@ export class OpenSeaAPI {
     }
 
     // Initialize specialized API clients
-    this.ordersAPI = new OrdersAPI(fetcher, this.chain)
-    this.offersAPI = new OffersAPI(fetcher, this.chain)
-    this.listingsAPI = new ListingsAPI(fetcher)
-    this.collectionsAPI = new CollectionsAPI(fetcher)
-    this.nftsAPI = new NFTsAPI(fetcher, this.chain)
-    this.accountsAPI = new AccountsAPI(fetcher, this.chain)
-    this.eventsAPI = new EventsAPI(fetcher)
+    this.orders = new OrdersAPI(fetcher, this.chain)
+    this.offers = new OffersAPI(fetcher, this.chain)
+    this.listings = new ListingsAPI(fetcher)
+    this.collections = new CollectionsAPI(fetcher)
+    this.nfts = new NFTsAPI(fetcher, this.chain)
+    this.accounts = new AccountsAPI(fetcher, this.chain)
+    this.events = new EventsAPI(fetcher)
     this.searchAPI = new SearchAPI(fetcher)
-    this.tokensAPI = new TokensAPI(fetcher)
-    this.chainsAPI = new ChainsAPI(fetcher)
-    this.dropsAPI = new DropsAPI(fetcher)
-    this.transactionsAPI = new TransactionsAPI(fetcher)
-    this.assetsAPI = new AssetsAPI(fetcher)
+    this.tokens = new TokensAPI(fetcher)
+    this.chains = new ChainsAPI(fetcher)
+    this.drops = new DropsAPI(fetcher)
+    this.transactions = new TransactionsAPI(fetcher)
+    this.assets = new AssetsAPI(fetcher)
     this.walletAuth = new WalletAuthAPI(fetcher)
   }
 
@@ -247,13 +257,14 @@ export class OpenSeaAPI {
    * @param chain The chain where the order is located. Defaults to the chain set in the constructor.
    * @returns The {@link GetOrderByHashResponse} returned by the API (can be Offer or Listing)
    * @throws An error if the order is not found
+   * @deprecated Use `api.orders.getOrderByHash()`. Removed in the next major.
    */
   public async getOrderByHash(
     orderHash: string,
     protocolAddress: string,
     chain: Chain = this.chain,
   ): Promise<GetOrderByHashResponse> {
-    return this.ordersAPI.getOrderByHash(orderHash, protocolAddress, chain)
+    return this.orders.getOrderByHash(orderHash, protocolAddress, chain)
   }
 
   /**
@@ -262,13 +273,14 @@ export class OpenSeaAPI {
    * @param limit The number of offers to return. Must be between 1 and 100. Default: 100
    * @param next The cursor for the next page of results. This is returned from a previous request.
    * @returns The {@link GetOffersResponse} returned by the API.
+   * @deprecated Use `api.offers.getAllOffers()`. Removed in the next major.
    */
   public async getAllOffers(
     collectionSlug: string,
     limit?: number,
     next?: string,
   ): Promise<GetOffersResponse> {
-    return this.offersAPI.getAllOffers(collectionSlug, limit, next)
+    return this.offers.getAllOffers(collectionSlug, limit, next)
   }
 
   /**
@@ -278,6 +290,7 @@ export class OpenSeaAPI {
    * @param next The cursor for the next page of results. This is returned from a previous request.
    * @param includePrivateListings Whether to include private listings (default: false)
    * @returns The {@link GetListingsResponse} returned by the API.
+   * @deprecated Use `api.listings.getAllListings()`. Removed in the next major.
    */
   public async getAllListings(
     collectionSlug: string,
@@ -285,7 +298,7 @@ export class OpenSeaAPI {
     next?: string,
     includePrivateListings?: boolean,
   ): Promise<GetListingsResponse> {
-    return this.listingsAPI.getAllListings(
+    return this.listings.getAllListings(
       collectionSlug,
       limit,
       next,
@@ -303,6 +316,7 @@ export class OpenSeaAPI {
    * @param floatValue The value of the trait for decimal-based numeric traits.
    * @param intValue The value of the trait for integer-based numeric traits.
    * @returns The {@link GetOffersResponse} returned by the API.
+   * @deprecated Use `api.offers.getTraitOffers()`. Removed in the next major.
    */
   public async getTraitOffers(
     collectionSlug: string,
@@ -313,7 +327,7 @@ export class OpenSeaAPI {
     floatValue?: number,
     intValue?: number,
   ): Promise<GetOffersResponse> {
-    return this.offersAPI.getTraitOffers(
+    return this.offers.getTraitOffers(
       collectionSlug,
       type,
       value,
@@ -329,12 +343,13 @@ export class OpenSeaAPI {
    * @param collectionSlug The slug of the collection.
    * @param tokenId The token identifier.
    * @returns The {@link GetBestOfferResponse} returned by the API.
+   * @deprecated Use `api.offers.getBestOffer()`. Removed in the next major.
    */
   public async getBestOffer(
     collectionSlug: string,
     tokenId: string | number,
   ): Promise<GetBestOfferResponse> {
-    return this.offersAPI.getBestOffer(collectionSlug, tokenId)
+    return this.offers.getBestOffer(collectionSlug, tokenId)
   }
 
   /**
@@ -343,13 +358,14 @@ export class OpenSeaAPI {
    * @param tokenId The token identifier.
    * @param includePrivateListings Whether to include private listings (default: false)
    * @returns The {@link GetBestListingResponse} returned by the API.
+   * @deprecated Use `api.listings.getBestListing()`. Removed in the next major.
    */
   public async getBestListing(
     collectionSlug: string,
     tokenId: string | number,
     includePrivateListings?: boolean,
   ): Promise<GetBestListingResponse> {
-    return this.listingsAPI.getBestListing(
+    return this.listings.getBestListing(
       collectionSlug,
       tokenId,
       includePrivateListings,
@@ -364,6 +380,7 @@ export class OpenSeaAPI {
    * @param includePrivateListings Whether to include private listings (default: false)
    * @param traits Optional {@link TraitFilter} array. Returns 400 if a single trait matches more than 1000 items.
    * @returns The {@link GetListingsResponse} returned by the API.
+   * @deprecated Use `api.listings.getBestListings()`. Removed in the next major.
    */
   public async getBestListings(
     collectionSlug: string,
@@ -372,7 +389,7 @@ export class OpenSeaAPI {
     includePrivateListings?: boolean,
     traits?: TraitFilter[],
   ): Promise<GetListingsResponse> {
-    return this.listingsAPI.getBestListings(
+    return this.listings.getBestListings(
       collectionSlug,
       limit,
       next,
@@ -387,11 +404,12 @@ export class OpenSeaAPI {
    * All listings must be EVM (Seaport orders). Payment can be from any chain (EVM or SVM).
    * @param request The cross-chain fulfillment request containing listings, fulfiller, payment, and optional recipient
    * @returns The {@link CrossChainFulfillmentResponse} with ordered transactions to sign and submit
+   * @deprecated Use `api.listings.getCrossChainFulfillmentData()`. Removed in the next major.
    */
   public async getCrossChainFulfillmentData(
     request: CrossChainFulfillmentRequest,
   ): Promise<CrossChainFulfillmentResponse> {
-    return this.listingsAPI.getCrossChainFulfillmentData(request)
+    return this.listings.getCrossChainFulfillmentData(request)
   }
 
   /**
@@ -406,6 +424,7 @@ export class OpenSeaAPI {
    * @param recipientAddress Optional recipient address for the NFT when fulfilling a listing. Not applicable for offers.
    * @param includeOptionalCreatorFees Whether to include optional creator fees in the fulfillment. If creator fees are already required, this is a no-op. Defaults to false.
    * @returns The {@link FulfillmentDataResponse}
+   * @deprecated Use `api.orders.generateFulfillmentData()`. Removed in the next major.
    */
   public async generateFulfillmentData(
     fulfillerAddress: string,
@@ -418,7 +437,7 @@ export class OpenSeaAPI {
     recipientAddress?: string,
     includeOptionalCreatorFees: boolean = false,
   ): Promise<Camelize<FulfillmentDataResponse>> {
-    return this.ordersAPI.generateFulfillmentData(
+    return this.orders.generateFulfillmentData(
       fulfillerAddress,
       orderHash,
       protocolAddress,
@@ -436,12 +455,13 @@ export class OpenSeaAPI {
    * @param order The order to post
    * @param protocolAddress The contract address of the seaport protocol
    * @returns The {@link Listing} posted to the API.
+   * @deprecated Use `api.orders.postListing()`. Removed in the next major.
    */
   public async postListing(
     order: ProtocolData,
     protocolAddress: string,
   ): Promise<Listing> {
-    return this.ordersAPI.postListing(order, protocolAddress)
+    return this.orders.postListing(order, protocolAddress)
   }
 
   /**
@@ -449,12 +469,13 @@ export class OpenSeaAPI {
    * @param order The order to post
    * @param protocolAddress The contract address of the seaport protocol
    * @returns The {@link Offer} posted to the API.
+   * @deprecated Use `api.orders.postOffer()`. Removed in the next major.
    */
   public async postOffer(
     order: ProtocolData,
     protocolAddress: string,
   ): Promise<Offer> {
-    return this.ordersAPI.postOffer(order, protocolAddress)
+    return this.orders.postOffer(order, protocolAddress)
   }
 
   /**
@@ -468,6 +489,7 @@ export class OpenSeaAPI {
    * @param traits If defined, an array of traits to create the multi-trait collection offer for.
    * @param numericTraits If defined, an array of numeric trait criteria with min/max ranges.
    * @returns The {@link BuildOfferResponse} returned by the API.
+   * @deprecated Use `api.offers.buildOffer()`. Removed in the next major.
    */
   public async buildOffer(
     offererAddress: string,
@@ -479,7 +501,7 @@ export class OpenSeaAPI {
     traits?: Array<{ type: string; value: string }>,
     numericTraits?: Array<{ type: string; min?: number; max?: number }>,
   ): Promise<BuildOfferResponse> {
-    return this.offersAPI.buildOffer(
+    return this.offers.buildOffer(
       offererAddress,
       quantity,
       collectionSlug,
@@ -497,13 +519,14 @@ export class OpenSeaAPI {
    * @param limit Optional limit for number of results.
    * @param next Optional cursor for pagination.
    * @returns The {@link GetOffersResponse} returned by the API.
+   * @deprecated Use `api.offers.getCollectionOffers()`. Removed in the next major.
    */
   public async getCollectionOffers(
     slug: string,
     limit?: number,
     next?: string,
   ): Promise<GetOffersResponse> {
-    return this.offersAPI.getCollectionOffers(slug, limit, next)
+    return this.offers.getCollectionOffers(slug, limit, next)
   }
 
   /**
@@ -515,6 +538,7 @@ export class OpenSeaAPI {
    * @param traits If defined, an array of traits to create the multi-trait collection offer for.
    * @param numericTraits If defined, an array of numeric trait criteria with min/max ranges.
    * @returns The {@link Offer} returned to the API.
+   * @deprecated Use `api.offers.postCollectionOffer()`. Removed in the next major.
    */
   public async postCollectionOffer(
     order: ProtocolData,
@@ -524,7 +548,7 @@ export class OpenSeaAPI {
     traits?: Array<{ type: string; value: string }>,
     numericTraits?: Array<{ type: string; min?: number; max?: number }>,
   ): Promise<CollectionOffer | null> {
-    return this.offersAPI.postCollectionOffer(
+    return this.offers.postCollectionOffer(
       order,
       slug,
       traitType,
@@ -541,6 +565,7 @@ export class OpenSeaAPI {
    * @param next Cursor to retrieve the next page of NFTs
    * @param traits Optional {@link TraitFilter} array. Returns 400 if a single trait matches more than 1000 items.
    * @returns The {@link ListNFTsResponse} returned by the API.
+   * @deprecated Use `api.nfts.getNFTsByCollection()`. Removed in the next major.
    */
   public async getNFTsByCollection(
     slug: string,
@@ -548,7 +573,7 @@ export class OpenSeaAPI {
     next: string | undefined = undefined,
     traits: TraitFilter[] | undefined = undefined,
   ): Promise<ListNFTsResponse> {
-    return this.nftsAPI.getNFTsByCollection(slug, limit, next, traits)
+    return this.nfts.getNFTsByCollection(slug, limit, next, traits)
   }
 
   /**
@@ -558,6 +583,7 @@ export class OpenSeaAPI {
    * @param next Cursor to retrieve the next page of NFTs.
    * @param chain The NFT's chain.
    * @returns The {@link ListNFTsResponse} returned by the API.
+   * @deprecated Use `api.nfts.getNFTsByContract()`. Removed in the next major.
    */
   public async getNFTsByContract(
     address: string,
@@ -565,7 +591,7 @@ export class OpenSeaAPI {
     next: string | undefined = undefined,
     chain: Chain = this.chain,
   ): Promise<ListNFTsResponse> {
-    return this.nftsAPI.getNFTsByContract(address, limit, next, chain)
+    return this.nfts.getNFTsByContract(address, limit, next, chain)
   }
 
   /**
@@ -575,6 +601,7 @@ export class OpenSeaAPI {
    * @param next Cursor to retrieve the next page of NFTs
    * @param chain The chain to query. Defaults to the chain set in the constructor.
    * @returns The {@link ListNFTsResponse} returned by the API.
+   * @deprecated Use `api.nfts.getNFTsByAccount()`. Removed in the next major.
    */
   public async getNFTsByAccount(
     address: string,
@@ -582,7 +609,7 @@ export class OpenSeaAPI {
     next: string | undefined = undefined,
     chain = this.chain,
   ): Promise<ListNFTsResponse> {
-    return this.nftsAPI.getNFTsByAccount(address, limit, next, chain)
+    return this.nfts.getNFTsByAccount(address, limit, next, chain)
   }
 
   /**
@@ -591,22 +618,24 @@ export class OpenSeaAPI {
    * @param identifier the identifier of the NFT (i.e. Token ID)
    * @param chain The NFT's chain.
    * @returns The {@link GetNFTResponse} returned by the API.
+   * @deprecated Use `api.nfts.getNFT()`. Removed in the next major.
    */
   public async getNFT(
     address: string,
     identifier: string,
     chain = this.chain,
   ): Promise<GetNFTResponse> {
-    return this.nftsAPI.getNFT(address, identifier, chain)
+    return this.nfts.getNFT(address, identifier, chain)
   }
 
   /**
    * Fetch an OpenSea collection.
    * @param slug The slug (identifier) of the collection.
    * @returns The {@link OpenSeaCollection} returned by the API.
+   * @deprecated Use `api.collections.getCollection()`. Removed in the next major.
    */
   public async getCollection(slug: string): Promise<OpenSeaCollection> {
-    return this.collectionsAPI.getCollection(slug)
+    return this.collections.getCollection(slug)
   }
 
   /**
@@ -618,6 +647,7 @@ export class OpenSeaAPI {
    * @param limit The limit of collections to return.
    * @param next The cursor for the next page of results. This is returned from a previous request.
    * @returns List of {@link OpenSeaCollection} returned by the API.
+   * @deprecated Use `api.collections.getCollections()`. Removed in the next major.
    */
   public async getCollections(
     orderBy: CollectionOrderByOption = CollectionOrderByOption.CREATED_DATE,
@@ -627,7 +657,7 @@ export class OpenSeaAPI {
     limit?: number,
     next?: string,
   ): Promise<GetCollectionsResponse> {
-    return this.collectionsAPI.getCollections(
+    return this.collections.getCollections(
       orderBy,
       chain,
       creatorUsername,
@@ -641,11 +671,12 @@ export class OpenSeaAPI {
    * Fetch stats for an OpenSea collection.
    * @param slug The slug (identifier) of the collection.
    * @returns The {@link OpenSeaCollection} returned by the API.
+   * @deprecated Use `api.collections.getCollectionStats()`. Removed in the next major.
    */
   public async getCollectionStats(
     slug: string,
   ): Promise<OpenSeaCollectionStats> {
-    return this.collectionsAPI.getCollectionStats(slug)
+    return this.collections.getCollectionStats(slug)
   }
 
   /**
@@ -653,21 +684,23 @@ export class OpenSeaAPI {
    * @param address The address of the payment token
    * @param chain The chain of the payment token
    * @returns The {@link OpenSeaPaymentToken} returned by the API.
+   * @deprecated Use `api.accounts.getPaymentToken()`. Removed in the next major.
    */
   public async getPaymentToken(
     address: string,
     chain = this.chain,
   ): Promise<OpenSeaPaymentToken> {
-    return this.accountsAPI.getPaymentToken(address, chain)
+    return this.accounts.getPaymentToken(address, chain)
   }
 
   /**
    * Fetch account for an address.
    * @param address The address to fetch the account for
    * @returns The {@link OpenSeaAccount} returned by the API.
+   * @deprecated Use `api.accounts.getAccount()`. Removed in the next major.
    */
   public async getAccount(address: string): Promise<OpenSeaAccount> {
-    return this.accountsAPI.getAccount(address)
+    return this.accounts.getAccount(address)
   }
 
   /**
@@ -676,13 +709,14 @@ export class OpenSeaAPI {
    * @param identifier The identifier of the NFT.
    * @param chain The chain where the NFT is located.
    * @returns The response from the API.
+   * @deprecated Use `api.nfts.refreshNFTMetadata()`. Removed in the next major.
    */
   public async refreshNFTMetadata(
     address: string,
     identifier: string,
     chain: Chain = this.chain,
   ): Promise<Record<string, unknown>> {
-    return this.nftsAPI.refreshNFTMetadata(address, identifier, chain)
+    return this.nfts.refreshNFTMetadata(address, identifier, chain)
   }
 
   /**
@@ -698,6 +732,7 @@ export class OpenSeaAPI {
    *                         name, version, address, and chain. The struct to sign is `OrderHash` containing a
    *                         single bytes32 field.
    * @returns The response from the API.
+   * @deprecated Use `api.orders.offchainCancelOrder()`. Removed in the next major.
    */
   public async offchainCancelOrder(
     protocolAddress: string,
@@ -705,7 +740,7 @@ export class OpenSeaAPI {
     chain: Chain = this.chain,
     offererSignature?: string,
   ): Promise<CancelOrderResponse> {
-    return this.ordersAPI.offchainCancelOrder(
+    return this.orders.offchainCancelOrder(
       protocolAddress,
       orderHash,
       chain,
@@ -715,6 +750,7 @@ export class OpenSeaAPI {
 
   /**
    * Get ordered actions to cancel an order onchain.
+   * @deprecated Use `api.orders.createCancelOrderActions()`. Removed in the next major.
    */
   public async createCancelOrderActions(
     protocolAddress: string,
@@ -722,7 +758,7 @@ export class OpenSeaAPI {
     request: CreateCancelOrderActionsRequest,
     chain: Chain = this.chain,
   ): Promise<CreateCancelOrderActionsResponse> {
-    return this.ordersAPI.createCancelOrderActions(
+    return this.orders.createCancelOrderActions(
       protocolAddress,
       orderIdentifier,
       request,
@@ -734,9 +770,10 @@ export class OpenSeaAPI {
    * Gets a list of events based on query parameters.
    * @param args Query parameters for filtering events.
    * @returns The {@link GetEventsResponse} returned by the API.
+   * @deprecated Use `api.events.getEvents()`. Removed in the next major.
    */
   public async getEvents(args?: GetEventsArgs): Promise<GetEventsResponse> {
-    return this.eventsAPI.getEvents(args)
+    return this.events.getEvents(args)
   }
 
   /**
@@ -744,12 +781,13 @@ export class OpenSeaAPI {
    * @param address The account address.
    * @param args Query parameters for filtering events.
    * @returns The {@link GetEventsResponse} returned by the API.
+   * @deprecated Use `api.events.getEventsByAccount()`. Removed in the next major.
    */
   public async getEventsByAccount(
     address: string,
     args?: GetEventsArgs,
   ): Promise<GetEventsResponse> {
-    return this.eventsAPI.getEventsByAccount(address, args)
+    return this.events.getEventsByAccount(address, args)
   }
 
   /**
@@ -758,12 +796,13 @@ export class OpenSeaAPI {
    * @param collectionSlug The slug (identifier) of the collection.
    * @param args Query parameters; see {@link GetEventsByCollectionArgs}.
    * @returns The {@link GetEventsResponse} returned by the API.
+   * @deprecated Use `api.events.getEventsByCollection()`. Removed in the next major.
    */
   public async getEventsByCollection(
     collectionSlug: string,
     args?: GetEventsByCollectionArgs,
   ): Promise<GetEventsResponse> {
-    return this.eventsAPI.getEventsByCollection(collectionSlug, args)
+    return this.events.getEventsByCollection(collectionSlug, args)
   }
 
   /**
@@ -773,6 +812,7 @@ export class OpenSeaAPI {
    * @param identifier The token identifier.
    * @param args Query parameters for filtering events.
    * @returns The {@link GetEventsResponse} returned by the API.
+   * @deprecated Use `api.events.getEventsByNFT()`. Removed in the next major.
    */
   public async getEventsByNFT(
     chain: Chain,
@@ -780,7 +820,7 @@ export class OpenSeaAPI {
     identifier: string,
     args?: GetEventsArgs,
   ): Promise<GetEventsResponse> {
-    return this.eventsAPI.getEventsByNFT(chain, address, identifier, args)
+    return this.events.getEventsByNFT(chain, address, identifier, args)
   }
 
   /**
@@ -788,54 +828,76 @@ export class OpenSeaAPI {
    * @param address The contract address.
    * @param chain The chain where the contract is deployed. Defaults to the chain set in the constructor.
    * @returns The {@link GetContractResponse} returned by the API.
+   * @deprecated Use `api.nfts.getContract()`. Removed in the next major.
    */
   public async getContract(
     address: string,
     chain: Chain = this.chain,
   ): Promise<GetContractResponse> {
-    return this.nftsAPI.getContract(address, chain)
+    return this.nfts.getContract(address, chain)
   }
 
   /**
    * Fetch all traits for a collection with their possible values and counts.
    * @param collectionSlug The slug (identifier) of the collection.
    * @returns The {@link GetTraitsResponse} returned by the API.
+   * @deprecated Use `api.collections.getTraits()`. Removed in the next major.
    */
   public async getTraits(collectionSlug: string): Promise<GetTraitsResponse> {
-    return this.collectionsAPI.getTraits(collectionSlug)
+    return this.collections.getTraits(collectionSlug)
+  }
+
+  /**
+   * Fetch floor prices per trait value for a collection.
+   *
+   * Covers text traits with at least one active listing, ordered by trait type, then value, then
+   * price. Numeric traits are not enumerated here; use {@link getTraits} for their min/max range.
+   * Every floor is denominated on the collection's own chain, identified by `chain` plus each
+   * entry's `paymentTokenSymbol`.
+   * @param collectionSlug The slug (identifier) of the collection.
+   * @returns The {@link TraitFloorsResponse} returned by the API.
+   * @deprecated Use `api.collections.getCollectionTraitFloors()`. Removed in the next major.
+   */
+  public async getCollectionTraitFloors(
+    collectionSlug: string,
+  ): Promise<TraitFloorsResponse> {
+    return this.collections.getCollectionTraitFloors(collectionSlug)
   }
 
   /**
    * Gets a list of trending tokens.
    * @param args Optional query parameters for pagination.
    * @returns The {@link GetTrendingTokensResponse} returned by the API.
+   * @deprecated Use `api.tokens.getTrendingTokens()`. Removed in the next major.
    */
   public async getTrendingTokens(
     args?: GetTokensArgs,
   ): Promise<GetTrendingTokensResponse> {
-    return this.tokensAPI.getTrendingTokens(args)
+    return this.tokens.getTrendingTokens(args)
   }
 
   /**
    * Gets a list of top tokens.
    * @param args Optional query parameters for pagination.
    * @returns The {@link GetTopTokensResponse} returned by the API.
+   * @deprecated Use `api.tokens.getTopTokens()`. Removed in the next major.
    */
   public async getTopTokens(
     args?: GetTokensArgs,
   ): Promise<GetTopTokensResponse> {
-    return this.tokensAPI.getTopTokens(args)
+    return this.tokens.getTopTokens(args)
   }
 
   /**
    * Gets a swap quote for exchanging tokens.
    * @param args Query parameters for the swap quote including token addresses, amount, and chain.
    * @returns The {@link GetSwapQuoteResponse} returned by the API.
+   * @deprecated Use `api.tokens.getSwapQuote()`. Removed in the next major.
    */
   public async getSwapQuote(
     args: GetSwapQuoteArgs,
   ): Promise<GetSwapQuoteResponse> {
-    return this.tokensAPI.getSwapQuote(args)
+    return this.tokens.getSwapQuote(args)
   }
 
   /**
@@ -843,12 +905,13 @@ export class OpenSeaAPI {
    * @param chain The chain the token is on.
    * @param address The token contract address.
    * @returns The {@link GetTokenResponse} returned by the API.
+   * @deprecated Use `api.tokens.getToken()`. Removed in the next major.
    */
   public async getToken(
     chain: string,
     address: string,
   ): Promise<GetTokenResponse> {
-    return this.tokensAPI.getToken(chain, address)
+    return this.tokens.getToken(chain, address)
   }
 
   /**
@@ -856,20 +919,22 @@ export class OpenSeaAPI {
    * chains (e.g. ETH on Ethereum, Base, and Arbitrum share the "eth" group).
    * @param args Optional query parameters (`limit`, `cursor`).
    * @returns The {@link GetTokenGroupsResponse} returned by the API.
+   * @deprecated Use `api.tokens.getTokenGroups()`. Removed in the next major.
    */
   public async getTokenGroups(
     args?: GetTokenGroupsArgs,
   ): Promise<GetTokenGroupsResponse> {
-    return this.tokensAPI.getTokenGroups(args)
+    return this.tokens.getTokenGroups(args)
   }
 
   /**
    * Gets a single token group by its slug (e.g. "eth").
    * @param slug The token group slug.
    * @returns The {@link GetTokenGroupResponse} returned by the API.
+   * @deprecated Use `api.tokens.getTokenGroup()`. Removed in the next major.
    */
   public async getTokenGroup(slug: string): Promise<GetTokenGroupResponse> {
-    return this.tokensAPI.getTokenGroup(slug)
+    return this.tokens.getTokenGroup(slug)
   }
 
   /**
@@ -885,9 +950,10 @@ export class OpenSeaAPI {
   /**
    * Gets the list of supported blockchains and their capabilities.
    * @returns The {@link GetChainsResponse} returned by the API.
+   * @deprecated Use `api.chains.getChains()`. Removed in the next major.
    */
   public async getChains(): Promise<GetChainsResponse> {
-    return this.chainsAPI.getChains()
+    return this.chains.getChains()
   }
 
   /**
@@ -895,12 +961,13 @@ export class OpenSeaAPI {
    * @param address The wallet address to fetch token balances for.
    * @param args Optional query parameters for filtering and pagination.
    * @returns The {@link GetAccountTokensResponse} returned by the API.
+   * @deprecated Use `api.accounts.getAccountTokens()`. Removed in the next major.
    */
   public async getAccountTokens(
     address: string,
     args?: GetAccountTokensArgs,
   ): Promise<GetAccountTokensResponse> {
-    return this.accountsAPI.getAccountTokens(address, args)
+    return this.accounts.getAccountTokens(address, args)
   }
 
   /**
@@ -910,6 +977,7 @@ export class OpenSeaAPI {
    * @param chain The chain where the NFT is located. Defaults to the chain set in the constructor.
    * @param ignoreCachedItemUrls Whether to ignore cached item URLs and re-fetch from source.
    * @returns The {@link ValidateMetadataResponse} returned by the API.
+   * @deprecated Use `api.nfts.validateMetadata()`. Removed in the next major.
    */
   public async validateNFTMetadata(
     address: string,
@@ -917,7 +985,7 @@ export class OpenSeaAPI {
     chain: Chain = this.chain,
     ignoreCachedItemUrls?: boolean,
   ): Promise<ValidateMetadataResponse> {
-    return this.nftsAPI.validateMetadata(
+    return this.nfts.validateMetadata(
       address,
       identifier,
       chain,
@@ -932,6 +1000,7 @@ export class OpenSeaAPI {
    * @param limit The number of offers to return. Must be between 1 and 200.
    * @param next The cursor for the next page of results.
    * @returns The {@link GetOffersResponse} returned by the API.
+   * @deprecated Use `api.offers.getOffersByNFT()`. Removed in the next major.
    */
   public async getOffersByNFT(
     collectionSlug: string,
@@ -939,12 +1008,7 @@ export class OpenSeaAPI {
     limit?: number,
     next?: string,
   ): Promise<GetOffersResponse> {
-    return this.offersAPI.getOffersByNFT(
-      collectionSlug,
-      identifier,
-      limit,
-      next,
-    )
+    return this.offers.getOffersByNFT(collectionSlug, identifier, limit, next)
   }
 
   /**
@@ -952,11 +1016,12 @@ export class OpenSeaAPI {
    * cross-chain. Returns an ordered list of transactions to execute.
    * @param request The sweep request containing buyer, collection, payment, and item caps.
    * @returns The {@link SweepCollectionResponse} returned by the API.
+   * @deprecated Use `api.listings.sweepCollection()`. Removed in the next major.
    */
   public async sweepCollection(
     request: SweepCollectionRequest,
   ): Promise<SweepCollectionResponse> {
-    return this.listingsAPI.sweepCollection(request)
+    return this.listings.sweepCollection(request)
   }
 
   /**
@@ -964,11 +1029,12 @@ export class OpenSeaAPI {
    * {@link OpenSeaAPI.getSwapQuote} — quote first, then execute.
    * @param request The swap execution request.
    * @returns The {@link SwapExecuteResponse} with transactions and a quote.
+   * @deprecated Use `api.tokens.executeSwap()`. Removed in the next major.
    */
   public async executeSwap(
     request: SwapExecuteRequest,
   ): Promise<SwapExecuteResponse> {
-    return this.tokensAPI.executeSwap(request)
+    return this.tokens.executeSwap(request)
   }
 
   /**
@@ -977,29 +1043,32 @@ export class OpenSeaAPI {
    * fulfillments, and token swaps. Poll this endpoint to check completion status.
    * @param request The transaction receipt request.
    * @returns The {@link TransactionReceiptResponse} returned by the API.
+   * @deprecated Use `api.transactions.getTransactionReceipt()`. Removed in the next major.
    */
   public async getTransactionReceipt(
     request: TransactionReceiptRequest,
   ): Promise<TransactionReceiptResponse> {
-    return this.transactionsAPI.getTransactionReceipt(request)
+    return this.transactions.getTransactionReceipt(request)
   }
 
   /**
    * Gets a list of drops (mints).
    * @param args Optional query parameters for filtering and pagination.
    * @returns The {@link GetDropsResponse} returned by the API.
+   * @deprecated Use `api.drops.getDrops()`. Removed in the next major.
    */
   public async getDrops(args?: GetDropsArgs): Promise<GetDropsResponse> {
-    return this.dropsAPI.getDrops(args)
+    return this.drops.getDrops(args)
   }
 
   /**
    * Gets detailed drop information for a collection.
    * @param slug The collection slug identifying the drop.
    * @returns The {@link GetDropResponse} returned by the API.
+   * @deprecated Use `api.drops.getDrop()`. Removed in the next major.
    */
   public async getDrop(slug: string): Promise<GetDropResponse> {
-    return this.dropsAPI.getDrop(slug)
+    return this.drops.getDrop(slug)
   }
 
   /**
@@ -1007,12 +1076,13 @@ export class OpenSeaAPI {
    * @param slug The collection slug identifying the drop.
    * @param request The mint request containing minter address and quantity.
    * @returns The {@link DropMintResponse} with ready-to-sign transaction data.
+   * @deprecated Use `api.drops.buildMintTransaction()`. Removed in the next major.
    */
   public async buildDropMintTransaction(
     slug: string,
     request: DropMintRequest,
   ): Promise<DropMintResponse> {
-    return this.dropsAPI.buildMintTransaction(slug, request)
+    return this.drops.buildMintTransaction(slug, request)
   }
 
   /**
@@ -1023,45 +1093,49 @@ export class OpenSeaAPI {
    * @param slug The collection slug identifying the drop.
    * @param request The payer, minter, quantity, and source payment asset.
    * @returns Transactions to submit and the request used to poll their receipt.
+   * @deprecated Use `api.drops.buildCrossChainMintTransactions()`. Removed in the next major.
    */
   public async buildCrossChainDropMintTransactions(
     slug: string,
     request: CrossChainDropMintRequest,
   ): Promise<CrossChainDropMintResponse> {
-    return this.dropsAPI.buildCrossChainMintTransactions(slug, request)
+    return this.drops.buildCrossChainMintTransactions(slug, request)
   }
 
   /**
    * Gets trending collections sorted by sales activity.
    * @param args Optional query parameters for timeframe, chain, category, and pagination.
    * @returns The {@link GetCollectionsPaginatedResponse} returned by the API.
+   * @deprecated Use `api.collections.getTrendingCollections()`. Removed in the next major.
    */
   public async getTrendingCollections(
     args?: GetTrendingCollectionsArgs,
   ): Promise<GetCollectionsPaginatedResponse> {
-    return this.collectionsAPI.getTrendingCollections(args)
+    return this.collections.getTrendingCollections(args)
   }
 
   /**
    * Gets top collections ranked by various stats.
    * @param args Optional query parameters for sort_by, chain, category, and pagination.
    * @returns The {@link GetCollectionsPaginatedResponse} returned by the API.
+   * @deprecated Use `api.collections.getTopCollections()`. Removed in the next major.
    */
   public async getTopCollections(
     args?: GetTopCollectionsArgs,
   ): Promise<GetCollectionsPaginatedResponse> {
-    return this.collectionsAPI.getTopCollections(args)
+    return this.collections.getTopCollections(args)
   }
 
   /**
    * Resolve an ENS name, OpenSea username, or wallet address to canonical account info.
    * @param identifier An ENS name (e.g. vitalik.eth), OpenSea username, or wallet address.
    * @returns The {@link ResolveAccountResponse} returned by the API.
+   * @deprecated Use `api.accounts.resolveAccount()`. Removed in the next major.
    */
   public async resolveAccount(
     identifier: string,
   ): Promise<ResolveAccountResponse> {
-    return this.accountsAPI.resolveAccount(identifier)
+    return this.accounts.resolveAccount(identifier)
   }
 
   /**
@@ -1069,11 +1143,12 @@ export class OpenSeaAPI {
    * This is a public read and does not require wallet authentication.
    * @param addressOrUsername An ENS name, OpenSea username, or wallet address.
    * @returns The {@link AgentProfileRelationshipsResponse} returned by the API.
+   * @deprecated Use `api.accounts.getAgentProfileRelationships()`. Removed in the next major.
    */
   public async getAgentProfileRelationships(
     addressOrUsername: string,
   ): Promise<AgentProfileRelationshipsResponse> {
-    return this.accountsAPI.getAgentProfileRelationships(addressOrUsername)
+    return this.accounts.getAgentProfileRelationships(addressOrUsername)
   }
 
   /**
@@ -1084,13 +1159,14 @@ export class OpenSeaAPI {
    * @param identifier The token identifier.
    * @param chain The chain where the NFT is located. Defaults to the chain set in the constructor.
    * @returns The {@link OpenSeaCollection} returned by the API.
+   * @deprecated Use `api.nfts.getNFTCollection()`. Removed in the next major.
    */
   public async getNFTCollection(
     address: string,
     identifier: string,
     chain: Chain = this.chain,
   ): Promise<OpenSeaCollection> {
-    return this.nftsAPI.getNFTCollection(address, identifier, chain)
+    return this.nfts.getNFTCollection(address, identifier, chain)
   }
 
   /**
@@ -1100,24 +1176,26 @@ export class OpenSeaAPI {
    * @param tokenId The token identifier.
    * @param chain The chain where the NFT is located. Defaults to the chain set in the constructor.
    * @returns The {@link GetNFTMetadataResponse} returned by the API.
+   * @deprecated Use `api.nfts.getNFTMetadata()`. Removed in the next major.
    */
   public async getNFTMetadata(
     address: string,
     tokenId: string,
     chain: Chain = this.chain,
   ): Promise<GetNFTMetadataResponse> {
-    return this.nftsAPI.getNFTMetadata(address, tokenId, chain)
+    return this.nfts.getNFTMetadata(address, tokenId, chain)
   }
 
   /**
    * Fetch multiple tokens in a single request.
    * @param request Batch request listing chain + contract address pairs.
    * @returns The {@link TokenBatchResponse} with detailed token info.
+   * @deprecated Use `api.tokens.getTokensBatch()`. Removed in the next major.
    */
   public async getTokensBatch(
     request: BatchTokensRequest,
   ): Promise<TokenBatchResponse> {
-    return this.tokensAPI.getTokensBatch(request)
+    return this.tokens.getTokensBatch(request)
   }
 
   /**
@@ -1126,13 +1204,14 @@ export class OpenSeaAPI {
    * @param address Token contract address.
    * @param args Time-series window — `start_time` required, `end_time` defaults to now.
    * @returns The {@link PriceHistoryResponse} returned by the API.
+   * @deprecated Use `api.tokens.getTokenPriceHistory()`. Removed in the next major.
    */
   public async getTokenPriceHistory(
     chain: Chain,
     address: string,
     args: TokenTimeSeriesArgs,
   ): Promise<PriceHistoryResponse> {
-    return this.tokensAPI.getTokenPriceHistory(chain, address, args)
+    return this.tokens.getTokenPriceHistory(chain, address, args)
   }
 
   /**
@@ -1141,84 +1220,92 @@ export class OpenSeaAPI {
    * @param address Token contract address.
    * @param args Time-series window plus candle `bucketSize` (required).
    * @returns The {@link OhlcvResponse} returned by the API.
+   * @deprecated Use `api.tokens.getTokenOhlcv()`. Removed in the next major.
    */
   public async getTokenOhlcv(
     chain: Chain,
     address: string,
     args: TokenTimeSeriesArgs & { bucketSize: string },
   ): Promise<OhlcvResponse> {
-    return this.tokensAPI.getTokenOhlcv(chain, address, args)
+    return this.tokens.getTokenOhlcv(chain, address, args)
   }
 
   /**
    * Fetch recent swap activity for a token.
+   * @deprecated Use `api.tokens.getTokenActivity()`. Removed in the next major.
    */
   public async getTokenActivity(
     chain: Chain,
     address: string,
     args?: TokenActivityArgs,
   ): Promise<TokenSwapActivityPaginatedResponse> {
-    return this.tokensAPI.getTokenActivity(chain, address, args)
+    return this.tokens.getTokenActivity(chain, address, args)
   }
 
   /**
    * Fetch materialized trade count, USD volume, and average trade size for a
    * token across the requested windows.
+   * @deprecated Use `api.tokens.getTokenActivityStats()`. Removed in the next major.
    */
   public async getTokenActivityStats(
     chain: Chain,
     address: string,
     args?: TokenActivityStatsArgs,
   ): Promise<TokenActivityStatsResponse> {
-    return this.tokensAPI.getTokenActivityStats(chain, address, args)
+    return this.tokens.getTokenActivityStats(chain, address, args)
   }
 
   /**
    * Fetch paginated fungible token activity (transfers, swaps, wraps, and
    * unwraps) for an account across all chains.
+   * @deprecated Use `api.tokens.getAccountTokenActivity()`. Removed in the next major.
    */
   public async getAccountTokenActivity(
     address: string,
     args?: GetAccountTokenActivityArgs,
   ): Promise<GetAccountTokenActivityResponse> {
-    return this.tokensAPI.getAccountTokenActivity(address, args)
+    return this.tokens.getAccountTokenActivity(address, args)
   }
 
   /**
    * Fetch paginated holders for a token, including quantity held, USD value,
    * and aggregate distribution health (STRONG | HEALTHY | CONCERNING | BAD).
+   * @deprecated Use `api.tokens.getTokenHolders()`. Removed in the next major.
    */
   public async getTokenHolders(
     chain: Chain,
     address: string,
     args?: TokenHoldersArgs,
   ): Promise<TokenHoldersResponse> {
-    return this.tokensAPI.getTokenHolders(chain, address, args)
+    return this.tokens.getTokenHolders(chain, address, args)
   }
 
   /**
    * Fetch liquidity pools for a token (pool type, USD reserves, and
    * bonding-curve progress / graduation flag where applicable).
+   * @deprecated Use `api.tokens.getTokenLiquidityPools()`. Removed in the next major.
    */
   public async getTokenLiquidityPools(
     chain: Chain,
     address: string,
     args?: TokenLiquidityPoolsArgs,
   ): Promise<TokenLiquidityPoolsResponse> {
-    return this.tokensAPI.getTokenLiquidityPools(chain, address, args)
+    return this.tokens.getTokenLiquidityPools(chain, address, args)
   }
 
   /**
    * Fetch multiple NFTs in a single request.
+   * @deprecated Use `api.nfts.getNFTsBatch()`. Removed in the next major.
    */
   public async getNFTsBatch(
     request: BatchNftsRequest,
   ): Promise<NftBatchResponse> {
-    return this.nftsAPI.getNFTsBatch(request)
+    return this.nfts.getNFTsBatch(request)
   }
 
   /**
    * Fetch owners of an NFT.
+   * @deprecated Use `api.nfts.getNFTOwners()`. Removed in the next major.
    */
   public async getNFTOwners(
     address: string,
@@ -1226,218 +1313,240 @@ export class OpenSeaAPI {
     chain: Chain = this.chain,
     args?: NFTOwnersArgs,
   ): Promise<OwnersPaginatedResponse> {
-    return this.nftsAPI.getNFTOwners(address, identifier, chain, args)
+    return this.nfts.getNFTOwners(address, identifier, chain, args)
   }
 
   /**
    * Fetch analytics (historical sale points) for an NFT.
+   * @deprecated Use `api.nfts.getNFTAnalytics()`. Removed in the next major.
    */
   public async getNFTAnalytics(
     address: string,
     identifier: string,
     chain: Chain = this.chain,
   ): Promise<NftAnalyticsResponse> {
-    return this.nftsAPI.getNFTAnalytics(address, identifier, chain)
+    return this.nfts.getNFTAnalytics(address, identifier, chain)
   }
 
   /**
    * Fetch multiple collections in a single request by slug.
+   * @deprecated Use `api.collections.getCollectionsBatch()`. Removed in the next major.
    */
   public async getCollectionsBatch(
     request: BatchCollectionsRequest,
   ): Promise<CollectionBatchResponse> {
-    return this.collectionsAPI.getCollectionsBatch(request)
+    return this.collections.getCollectionsBatch(request)
   }
 
   /**
    * Fetch top offers for a collection grouped by price level.
+   * @deprecated Use `api.collections.getCollectionOfferAggregates()`. Removed in the next major.
    */
   public async getCollectionOfferAggregates(
     slug: string,
     args?: PaginatedAnalyticsArgs,
   ): Promise<CollectionOfferAggregatesPaginatedResponse> {
-    return this.collectionsAPI.getCollectionOfferAggregates(slug, args)
+    return this.collections.getCollectionOfferAggregates(slug, args)
   }
 
   /**
    * Fetch holders of a collection.
+   * @deprecated Use `api.collections.getCollectionHolders()`. Removed in the next major.
    */
   public async getCollectionHolders(
     slug: string,
     args?: CollectionHoldersArgs,
   ): Promise<CollectionHoldersPaginatedResponse> {
-    return this.collectionsAPI.getCollectionHolders(slug, args)
+    return this.collections.getCollectionHolders(slug, args)
   }
 
   /**
    * Fetch the floor-price history of a collection.
+   * @deprecated Use `api.collections.getCollectionFloorPrices()`. Removed in the next major.
    */
   public async getCollectionFloorPrices(
     slug: string,
     args?: CollectionFloorPricesArgs,
   ): Promise<FloorPriceHistoryResponse> {
-    return this.collectionsAPI.getCollectionFloorPrices(slug, args)
+    return this.collections.getCollectionFloorPrices(slug, args)
   }
 
   /**
    * Get ordered approval + sign actions to create one or more listings.
+   * @deprecated Use `api.listings.createListingActions()`. Removed in the next major.
    */
   public async createListingActions(
     request: CreateListingActionsRequest,
   ): Promise<CreateListingActionsResponse> {
-    return this.listingsAPI.createListingActions(request)
+    return this.listings.createListingActions(request)
   }
 
   /**
    * Get ordered actions to fulfill a listing.
+   * @deprecated Use `api.listings.createListingFulfillmentActions()`. Removed in the next major.
    */
   public async createListingFulfillmentActions(
     request: CreateListingFulfillmentActionsRequest,
   ): Promise<CreateListingFulfillmentActionsResponse> {
-    return this.listingsAPI.createListingFulfillmentActions(request)
+    return this.listings.createListingFulfillmentActions(request)
   }
 
   /**
    * Get ordered actions to create an offer.
+   * @deprecated Use `api.offers.createOfferActions()`. Removed in the next major.
    */
   public async createOfferActions(
     request: CreateOfferActionsRequest,
   ): Promise<CreateOfferActionsResponse> {
-    return this.offersAPI.createOfferActions(request)
+    return this.offers.createOfferActions(request)
   }
 
   /**
    * Get ordered actions to fulfill an offer.
+   * @deprecated Use `api.offers.createOfferFulfillmentActions()`. Removed in the next major.
    */
   public async createOfferFulfillmentActions(
     request: CreateOfferFulfillmentActionsRequest,
   ): Promise<CreateOfferFulfillmentActionsResponse> {
-    return this.offersAPI.createOfferFulfillmentActions(request)
+    return this.offers.createOfferFulfillmentActions(request)
   }
 
   /**
    * Build a deploy-contract transaction for a new drop.
+   * @deprecated Use `api.drops.deployDropContract()`. Removed in the next major.
    */
   public async deployDropContract(
     request: DropDeployRequest,
   ): Promise<DropDeployResponse> {
-    return this.dropsAPI.deployDropContract(request)
+    return this.drops.deployDropContract(request)
   }
 
   /**
    * Get the receipt of a previously submitted drop-deploy transaction.
+   * @deprecated Use `api.drops.getDeployReceipt()`. Removed in the next major.
    */
   public async getDeployContractReceipt(
     chain: Chain,
     txHash: string,
   ): Promise<DropDeployReceiptResponse> {
-    return this.dropsAPI.getDeployReceipt(chain, txHash)
+    return this.drops.getDeployReceipt(chain, txHash)
   }
 
   /**
    * Build transactions to transfer NFTs or tokens between wallets.
+   * @deprecated Use `api.assets.transferAssets()`. Removed in the next major.
    */
   public async transferAssets(
     request: TransferRequest,
   ): Promise<TransferResponse> {
-    return this.assetsAPI.transferAssets(request)
+    return this.assets.transferAssets(request)
   }
 
   /**
    * Get portfolio stats (net worth, P&L) for an account.
+   * @deprecated Use `api.accounts.getPortfolioStats()`. Removed in the next major.
    */
   public async getPortfolioStats(
     address: string,
     args?: PortfolioArgs,
   ): Promise<PortfolioStatsResponse> {
-    return this.accountsAPI.getPortfolioStats(address, args)
+    return this.accounts.getPortfolioStats(address, args)
   }
 
   /**
    * Get portfolio net-worth history for an account.
+   * @deprecated Use `api.accounts.getPortfolioHistory()`. Removed in the next major.
    */
   public async getPortfolioHistory(
     address: string,
     args?: PortfolioArgs,
   ): Promise<PortfolioHistoryResponse> {
-    return this.accountsAPI.getPortfolioHistory(address, args)
+    return this.accounts.getPortfolioHistory(address, args)
   }
 
   /**
    * Get offers received by an account.
+   * @deprecated Use `api.accounts.getProfileOffersReceived()`. Removed in the next major.
    */
   public async getProfileOffersReceived(
     address: string,
     args?: ProfileOrdersArgs,
   ): Promise<ProfileOffersResponse> {
-    return this.accountsAPI.getProfileOffersReceived(address, args)
+    return this.accounts.getProfileOffersReceived(address, args)
   }
 
   /**
    * Get active offers made by an account.
+   * @deprecated Use `api.accounts.getProfileOffers()`. Removed in the next major.
    */
   public async getProfileOffers(
     address: string,
     args?: ProfileOrdersArgs,
   ): Promise<ProfileOffersResponse> {
-    return this.accountsAPI.getProfileOffers(address, args)
+    return this.accounts.getProfileOffers(address, args)
   }
 
   /**
    * Get active listings for an account.
+   * @deprecated Use `api.accounts.getProfileListings()`. Removed in the next major.
    */
   public async getProfileListings(
     address: string,
     args?: ProfileOrdersArgs,
   ): Promise<ProfileListingsResponse> {
-    return this.accountsAPI.getProfileListings(address, args)
+    return this.accounts.getProfileListings(address, args)
   }
 
   /**
    * Get items favorited by an account.
+   * @deprecated Use `api.accounts.getProfileFavorites()`. Removed in the next major.
    */
   public async getProfileFavorites(
     address: string,
     args?: ProfileFavoritesArgs,
   ): Promise<ProfileFavoritesResponse> {
-    return this.accountsAPI.getProfileFavorites(address, args)
+    return this.accounts.getProfileFavorites(address, args)
   }
 
   /**
    * Get collections owned by an account.
+   * @deprecated Use `api.accounts.getProfileCollections()`. Removed in the next major.
    */
   public async getProfileCollections(
     address: string,
     args?: ProfileCollectionsArgs,
   ): Promise<ProfileCollectionsResponse> {
-    return this.accountsAPI.getProfileCollections(address, args)
+    return this.accounts.getProfileCollections(address, args)
   }
 
   /**
    * Get aggregated trading P&L (realized + unrealized) for an account.
+   * @deprecated Use `api.accounts.getWalletPnl()`. Removed in the next major.
    */
   public async getWalletPnl(address: string): Promise<WalletPnlResponse> {
-    return this.accountsAPI.getWalletPnl(address)
+    return this.accounts.getWalletPnl(address)
   }
 
   /**
    * Get closed (realized) trading positions for an account.
+   * @deprecated Use `api.accounts.getWalletClosedPositions()`. Removed in the next major.
    */
   public async getWalletClosedPositions(
     address: string,
     args?: WalletClosedPositionsArgs,
   ): Promise<ClosedPositionsResponse> {
-    return this.accountsAPI.getWalletClosedPositions(address, args)
+    return this.accounts.getWalletClosedPositions(address, args)
   }
 
   /**
    * Get the token transfers contributing to a wallet's position in a currency.
+   * @deprecated Use `api.accounts.getWalletTokenTransfers()`. Removed in the next major.
    */
   public async getWalletTokenTransfers(
     address: string,
     args: WalletTokenTransfersArgs,
   ): Promise<PositionTokenTransfersResponse> {
-    return this.accountsAPI.getWalletTokenTransfers(address, args)
+    return this.accounts.getWalletTokenTransfers(address, args)
   }
 
   /**

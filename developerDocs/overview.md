@@ -80,7 +80,7 @@ const sdk = new OpenSeaSDK(
 
 ```typescript
 // Fetch an NFT
-const { nft } = await sdk.api.getNFT(contractAddress, tokenId);
+const { nft } = await sdk.api.nfts.getNFT(contractAddress, tokenId);
 
 // Create an offer
 await sdk.createOffer({
@@ -90,7 +90,7 @@ await sdk.createOffer({
 });
 
 // Fulfill a listing
-const order = await sdk.api.getOrderByHash(
+const order = await sdk.api.orders.getOrderByHash(
   "0x...",
   "0x00000000000000ADc04C56Bf30aC9d3c0aAF14dC", // protocolAddress (Seaport 1.6)
 );

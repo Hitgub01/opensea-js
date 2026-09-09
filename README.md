@@ -26,8 +26,10 @@ Get started by getting an API key and instantiating your own OpenSea SDK instanc
 **For quick experimentation** — request a free-tier key in code, no signup needed. The returned key is valid for 7 days.
 
 ```typescript
-import { OpenSeaSDK } from "@opensea/sdk";
+import { ethers } from "ethers";
+import { OpenSeaSDK, Chain } from "@opensea/sdk";
 
+const provider = new ethers.JsonRpcProvider("https://eth-mainnet.g.alchemy.com/v2/YOUR_ALCHEMY_API_KEY");
 const { apiKey } = await OpenSeaSDK.requestInstantApiKey();
 const sdk = new OpenSeaSDK(provider, { chain: Chain.Mainnet, apiKey });
 ```
@@ -41,6 +43,17 @@ curl -s -X POST https://api.opensea.io/api/v2/auth/keys | jq -r '.api_key'
 **For production** — create a permanent key at [opensea.io/settings/developer](https://opensea.io/settings/developer). These keys don't expire, get higher rate limits, and can be rotated from your account. See the [API key docs](https://docs.opensea.io/reference/api-keys) for details.
 
 Happy seafaring!
+
+## Calling the API
+
+`sdk.api` groups its methods by domain: `sdk.api.collections.getCollection(slug)`,
+`sdk.api.nfts.getNFT(...)`, `sdk.api.offers.getAllOffers(...)`, and so on across `accounts`,
+`assets`, `chains`, `drops`, `events`, `listings`, `orders`, `tokens`, `transactions` and
+`walletAuth`. Search stays flat as `sdk.api.search(args)`.
+
+The older flat methods (`sdk.api.getCollection(slug)`) still work, carry `@deprecated` tags naming
+their replacements, and are removed in the next major. See the
+[API reference](developerDocs/api-reference.md#calling-the-api) for the four whose names change.
 
 ## Quick Start
 
@@ -104,7 +117,7 @@ Build the ordered transactions for paying on one chain and minting a drop on
 another through the typed API client:
 
 ```typescript
-const mint = await sdk.api.buildCrossChainDropMintTransactions("pyro-on-ape", {
+const mint = await sdk.api.drops.buildCrossChainMintTransactions("pyro-on-ape", {
   payer: "0x1111111111111111111111111111111111111111",
   minter: "0x1111111111111111111111111111111111111111",
   quantity: 1,
@@ -115,7 +128,7 @@ const mint = await sdk.api.buildCrossChainDropMintTransactions("pyro-on-ape", {
 })
 
 // Submit mint.transactions in order, then poll the exact returned request.
-const receipt = await sdk.api.getTransactionReceipt(mint.receiptRequest)
+const receipt = await sdk.api.transactions.getTransactionReceipt(mint.receiptRequest)
 ```
 
 ### Order actions on EVM and Solana
@@ -123,7 +136,7 @@ const receipt = await sdk.api.getTransactionReceipt(mint.receiptRequest)
 Use the typed action APIs when a wallet needs ordered approval, signing, or transaction steps. Solana callers should pass `svm_order.id` as the order identifier and preserve base58 address casing.
 
 ```typescript
-const actions = await sdk.api.createListingFulfillmentActions({
+const actions = await sdk.api.listings.createListingFulfillmentActions({
   listing: {
     hash: "<svm_order.id>",
     chain: "solana",
@@ -134,9 +147,9 @@ const actions = await sdk.api.createListingFulfillmentActions({
 })
 
 // Also available:
-// sdk.api.createOfferActions(request)
-// sdk.api.createOfferFulfillmentActions(request)
-// sdk.api.createCancelOrderActions(protocol, orderIdentifier, request, chain)
+// sdk.api.offers.createOfferActions(request)
+// sdk.api.offers.createOfferFulfillmentActions(request)
+// sdk.api.orders.createCancelOrderActions(protocol, orderIdentifier, request, chain)
 ```
 
 Execute `actions.steps` in order. If a Solana action includes a partially signed transaction or requires a Jito bundle, submit it exactly as directed by the response rather than rebuilding or broadcasting it through a public RPC.
@@ -147,7 +160,9 @@ Read materialized trade count and USD volume for a token without aggregating
 raw events:
 
 ```typescript
-const activity = await sdk.api.getTokenActivityStats(
+import { Chain } from "@opensea/sdk";
+
+const activity = await sdk.api.tokens.getTokenActivityStats(
   Chain.Base,
   "0x4200000000000000000000000000000000000006",
   { windows: ["1h", "24h"] },

@@ -1,5 +1,140 @@
 # @opensea/sdk
 
+## 12.4.1
+
+### Patch Changes
+
+- 3920735: Fix documented examples that do not compile, and type-check every doc example in CI.
+
+  The README and developer docs showed snake_case fields on responses the SDK camelizes
+  (`asset_events`, `usd_price`, `floor_price`, `contract_standard`, `asset_types`,
+  `event_timestamp`), so those reads were `undefined` at runtime. Three stream-migration examples
+  called subscription methods on a `client` no snippet ever created. Two cancellation examples fed
+  `cancelOrder`/`cancelOrders` the v2 `Listing`/`Offer` shape, which is not the `OrderV2` they take.
+
+  `scripts/verify-doc-examples.mjs` now extracts every TypeScript fence from `README.md` and
+  `developerDocs/` and type-checks it against the package's built declarations, so an example naming
+  a method or field the package does not ship fails CI instead of reaching a reader.
+
+## 12.4.0
+
+### Minor Changes
+
+- a2d06b9: Expose the per-domain sub-clients on `OpenSeaAPI`, and deprecate the 88 flat methods.
+
+  `api.collections.getCollectionTraitFloors(slug)` now works, along with `api.tokens`, `api.nfts`,
+  `api.orders`, `api.offers`, `api.listings`, `api.accounts`, `api.events`, `api.drops`, `api.chains`,
+  `api.transactions` and `api.assets`. `api.walletAuth` was already public and is unchanged.
+
+  This is the shape the 12.2.0 release notes assumed and the shape `@opensea/cli` already has. Until
+  now `OpenSeaAPI` held each sub-client privately and re-exposed it as a flat method, so adding an
+  endpoint took two edits and only one of them was enforced. Skipping the second is what shipped
+  `getCollectionTraitFloors` with no way to call it
+  ([opensea-sdk#2007](https://github.com/ProjectOpenSea/opensea-sdk/issues/2007)). A method added to a
+  sub-client is now reachable as soon as it exists, so that class of bug is gone rather than guarded.
+
+  Nothing breaks. All 88 flat methods keep working and are marked `@deprecated` with the namespaced
+  call to use instead, resolved through the four cases where the flat name differs: the note on
+  `buildDropMintTransaction` points at `api.drops.buildMintTransaction()`. They are removed in the
+  next major.
+
+  `search` has no namespace. `SearchAPI`'s only method is also called `search`, so the property and
+  the existing `api.search()` method want the same name and adding it would have to displace a
+  working call. `api.search(args)` stays the way to call it. Whether the next major renames it to
+  `api.search.query()` is open.
+
+  The tests that guarded the forwarder layer now guard what actually needs it. A compile-time `Pick`
+  catches a namespace marked `private`, which is invisible at runtime and would silently remove the
+  property from the published type. A frozen list catches a deprecated flat method disappearing
+  before the major, which nothing else would notice once the namespaces work. The old assertion, that
+  every sub-client method has a forwarder, was removed because it now demands a deprecated forwarder
+  for every new method.
+
+- a278c53: Expose `getCollectionTraitFloors` on `OpenSeaAPI`, and fail the build when a sub-client method has no forwarder.
+
+  `getCollectionTraitFloors` shipped in 12.2.0 on `CollectionsAPI`, which `OpenSeaAPI` holds in a
+  private field. Nothing forwarded to it, so there was no way to call it: `api.collections` is
+  undefined and `api.getCollectionTraitFloors` did not exist. The 12.2.0 release example
+  (`sdk.api.collections.getCollectionTraitFloors(slug)`) threw a TypeError before making a request.
+  Reported in [opensea-sdk#2007](https://github.com/ProjectOpenSea/opensea-sdk/issues/2007). Call it
+  as `sdk.api.collections.getCollectionTraitFloors(slug)`: the namespaces landed in this same
+  release, so the shape the 12.2.0 notes advertised now works. The flat
+  `sdk.api.getCollectionTraitFloors(slug)` this entry originally pointed at also works and is
+  deprecated.
+
+  `subclientReachability.spec.ts` now asserts every sub-client method is reachable on `OpenSeaAPI`,
+  so the next one added without a forwarder fails here rather than in a release example. It reads the
+  sub-clients off a live instance rather than a list in the test, since a list reintroduces the same
+  gap one level up. Four methods are deliberately public under a different name
+  (`buildDropMintTransaction`, `buildCrossChainDropMintTransactions`, `getDeployContractReceipt`,
+  `validateNFTMetadata`); those are recorded in a `FORWARDED_AS` map that a second assertion checks
+  for stale entries, so the map cannot be used to silence a real gap.
+
+  The existing trait-floor tests construct `CollectionsAPI` directly and kept passing throughout, so
+  the two added to `api.spec.ts` drive the method from `OpenSeaAPI` with a stubbed transport and
+  assert the request URL and the camelized response.
+
+### Patch Changes
+
+- a35490c: Update the docs to the namespaced API, and fix four documented methods that do not exist.
+
+  `api.collections.getCollection(slug)` is the supported call after #691, so the 68 flat call sites
+  across `README.md` and `developerDocs/` now use their namespace. The rewrite was driven by the
+  `@deprecated` tags in `api.ts`, which were themselves generated from each forwarder's delegation
+  target, so the docs cannot name a pairing the code does not have. `README.md` and the API reference
+  gained a short section on the namespaces, the `search` exception, and the four methods whose name
+  changes as well as their shape.
+
+  Separately, four methods the docs called have never been on `OpenSeaAPI`, so those examples threw
+  before making a request. Renaming them was not enough: they also pass a contract address where the
+  real methods take a collection slug.
+
+  - `getNFTOffers` is `offers.getOffersByNFT(collectionSlug, identifier, limit, next)`.
+  - `getNFTListings` was removed in #276 and has no replacement, because no per-NFT all-listings
+    endpoint exists. Its reference section now says so and points at `listings.getBestListing` for one
+    NFT and `listings.getAllListings` for a collection.
+  - The pagination example called `getOrders({ side, next })`, a shape from before the v2 API. It now
+    pages `listings.getAllListings`.
+  - The error-handling example called `getOrder({ side, assetContractAddress, tokenIds })`, likewise.
+    It now uses `listings.getBestListing`.
+
+  The "check if an NFT has listings" recipe used to test `listings.length`. The best-listing endpoint
+  returns 404 when nothing is listed, which the SDK raises rather than returning an empty array, so it
+  is now a `try`/`catch` with that stated.
+
+  Three fenced blocks describing event payload shapes were labelled `typescript` while containing a
+  bare object literal, and one used `new OpenSeaSDK(...)` with a literal ellipsis. They are now a
+  `type` declaration and a `declare const`, so the blocks parse.
+
+  Fenced examples that referenced an SDK export without importing it now import it. `Listing` in the
+  rewritten pagination example was one; the other 20 were already there, using `Chain`,
+  `AssetEventType`, `CollectionOrderByOption`, `OrderSide` and `NFT`. Two in `stream-migration.md`
+  are left alone: `EventType` exists on both the root and the `@opensea/sdk/stream` subpath with
+  different shapes, so which one those examples mean is a question for whoever fixes that file.
+
+- e77bf9b: Enforce that an `OpenSeaAPI` forwarder keeps the signature of the method it forwards to.
+
+  Exposing `getCollectionTraitFloors` closed the case where a sub-client method has no forwarder at
+  all ([opensea-sdk#2007](https://github.com/ProjectOpenSea/opensea-sdk/issues/2007)). The same design
+  has a quieter failure that the reachability test cannot see: a forwarder that exists but no longer
+  accepts what the method accepts. A parameter a forwarder omits is not missing from the SDK, only
+  from the way anyone can call it, so `getAllListings` dropping `includePrivateListings` would leave
+  every caller unable to ask for private listings with the method still present and every existing
+  test still green.
+
+  `test/api/forwarderSignatures.spec.ts` compares each forwarder's parameter tuple and return type
+  against the method it delegates to, for all 89 pairs. `tsconfig.check.json` includes `test`, so a
+  mismatch fails `check-types`. There is no drift today; this keeps it that way. The comparison is
+  mutual, so a widened return type fails as well as a narrowed one, and it rejects `any` on either
+  side, including under a `Promise`, because `any` is mutually assignable with everything and would
+  otherwise satisfy the check it is meant to fail. An assertion ties the hand-written sub-client list
+  to the live enumeration the reachability test uses, so a sub-client added and forgotten cannot skip
+  the check.
+
+  Both tests now read their exceptions and their sub-client enumeration from
+  `test/utils/forwarderContract.ts`, so the four deliberate renames live in one list rather than two
+  that drift. No runtime code changes.
+
 ## 12.3.0
 
 ### Minor Changes

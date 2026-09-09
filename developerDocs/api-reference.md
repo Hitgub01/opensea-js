@@ -25,6 +25,31 @@ This comprehensive reference documents all OpenSea API endpoints available throu
 
 ---
 
+## Calling the API
+
+Reads and writes are grouped by domain on `sdk.api`:
+
+```ts
+const collection = await sdk.api.collections.getCollection("boredapeyachtclub")
+const { nfts } = await sdk.api.nfts.getNFTsByCollection("boredapeyachtclub")
+const best = await sdk.api.listings.getBestListing("boredapeyachtclub", "1")
+```
+
+The namespaces are `accounts`, `assets`, `chains`, `collections`, `drops`, `events`, `listings`,
+`nfts`, `offers`, `orders`, `tokens`, `transactions` and `walletAuth`. Search is the exception and
+stays flat, as `sdk.api.search(args)`, because `SearchAPI`'s only method is also called `search`.
+
+The flat equivalents (`sdk.api.getCollection(...)`) still work and are deprecated for removal in the
+next major. Each carries a `@deprecated` tag naming its replacement, so your editor will point you
+at the namespaced call. Four of them differ in name as well as shape:
+
+| Deprecated | Replacement |
+| --- | --- |
+| `api.buildDropMintTransaction` | `api.drops.buildMintTransaction` |
+| `api.buildCrossChainDropMintTransactions` | `api.drops.buildCrossChainMintTransactions` |
+| `api.getDeployContractReceipt` | `api.drops.getDeployReceipt` |
+| `api.validateNFTMetadata` | `api.nfts.validateMetadata` |
+
 ## NFT Endpoints
 
 ### Get NFT
@@ -32,7 +57,9 @@ This comprehensive reference documents all OpenSea API endpoints available throu
 Fetch metadata, traits, ownership information, and rarity for a single NFT.
 
 ```typescript
-const { nft } = await openseaSDK.api.getNFT(
+import { Chain } from "@opensea/sdk";
+
+const { nft } = await openseaSDK.api.nfts.getNFT(
   "0xBC4CA0EdA7647A8aB7C2061c2E118A18a936f13D", // Contract address
   "1", // Token ID
   Chain.Mainnet, // Optional: defaults to SDK's configured chain
@@ -62,7 +89,7 @@ console.log(nft.traits);
 Fetch multiple NFTs for a collection with pagination support.
 
 ```typescript
-const { nfts, next } = await openseaSDK.api.getNFTsByCollection(
+const { nfts, next } = await openseaSDK.api.nfts.getNFTsByCollection(
   "boredapeyachtclub", // Collection slug
   50, // Limit
   undefined, // Next cursor for pagination
@@ -92,7 +119,9 @@ console.log(`Fetched ${nfts.length} NFTs`);
 Fetch multiple NFTs for a specific contract address.
 
 ```typescript
-const { nfts, next } = await openseaSDK.api.getNFTsByContract(
+import { Chain } from "@opensea/sdk";
+
+const { nfts, next } = await openseaSDK.api.nfts.getNFTsByContract(
   "0xBC4CA0EdA7647A8aB7C2061c2E118A18a936f13D",
   50,
   undefined,
@@ -118,7 +147,9 @@ const { nfts, next } = await openseaSDK.api.getNFTsByContract(
 Fetch NFTs owned by a specific account address.
 
 ```typescript
-const { nfts, next } = await openseaSDK.api.getNFTsByAccount(
+import { Chain } from "@opensea/sdk";
+
+const { nfts, next } = await openseaSDK.api.nfts.getNFTsByAccount(
   "0xfBa662e1a8e91a350702cF3b87D0C2d2Fb4BA57F", // Wallet address
   50,
   undefined,
@@ -146,7 +177,9 @@ console.log(`Account owns ${nfts.length} NFTs`);
 Force a metadata refresh for an NFT. Useful after updating metadata onchain.
 
 ```typescript
-await openseaSDK.api.refreshNFTMetadata(
+import { Chain } from "@opensea/sdk";
+
+await openseaSDK.api.nfts.refreshNFTMetadata(
   "0xBC4CA0EdA7647A8aB7C2061c2E118A18a936f13D",
   "1",
   Chain.Mainnet,
@@ -172,14 +205,16 @@ await openseaSDK.api.refreshNFTMetadata(
 Fetch smart contract information including name, chain, and associated collection.
 
 ```typescript
-const contract = await openseaSDK.api.getContract(
+import { Chain } from "@opensea/sdk";
+
+const contract = await openseaSDK.api.nfts.getContract(
   "0xBC4CA0EdA7647A8aB7C2061c2E118A18a936f13D",
   Chain.Mainnet,
 );
 
 console.log(contract.name); // "Bored Ape Yacht Club"
 console.log(contract.collection); // "boredapeyachtclub"
-console.log(contract.contract_standard); // "erc721"
+console.log(contract.contractStandard); // "erc721"
 ```
 
 **Parameters:**
@@ -195,7 +230,7 @@ console.log(contract.contract_standard); // "erc721"
 - `chain`: Blockchain name
 - `collection`: Associated collection slug (if any)
 - `name`: Contract name
-- `contract_standard`: Token standard (e.g., "erc721", "erc1155")
+- `contractStandard`: Token standard (e.g., "erc721", "erc1155")
 
 ---
 
@@ -206,7 +241,7 @@ console.log(contract.contract_standard); // "erc721"
 Fetch detailed information about a single collection including fees, traits, and social links.
 
 ```typescript
-const collection = await openseaSDK.api.getCollection("boredapeyachtclub");
+const collection = await openseaSDK.api.collections.getCollection("boredapeyachtclub");
 
 console.log(collection.name);
 console.log(collection.totalSupply);
@@ -228,7 +263,9 @@ console.log(collection.fees);
 Fetch a list of collections with filtering and sorting options.
 
 ```typescript
-const { collections, next } = await openseaSDK.api.getCollections(
+import { Chain, CollectionOrderByOption } from "@opensea/sdk";
+
+const { collections, next } = await openseaSDK.api.collections.getCollections(
   CollectionOrderByOption.SEVEN_DAY_VOLUME, // Sort by 7-day volume
   Chain.Mainnet, // Filter by chain
   undefined, // Creator username filter
@@ -270,11 +307,11 @@ const { collections, next } = await openseaSDK.api.getCollections(
 Fetch statistical data for a collection including floor price, volume, and sales.
 
 ```typescript
-const stats = await openseaSDK.api.getCollectionStats("boredapeyachtclub");
+const stats = await openseaSDK.api.collections.getCollectionStats("boredapeyachtclub");
 
 console.log(stats.total.volume); // Total trading volume
 console.log(stats.total.sales); // Total number of sales
-console.log(stats.total.floor_price); // Current floor price
+console.log(stats.total.floorPrice); // Current floor price
 ```
 
 **Parameters:**
@@ -296,7 +333,7 @@ Fetch all traits for a collection with their possible values and occurrence coun
 
 ```typescript
 const { categories, counts } =
-  await openseaSDK.api.getTraits("boredapeyachtclub");
+  await openseaSDK.api.collections.getTraits("boredapeyachtclub");
 
 // List all trait categories
 console.log(Object.keys(categories)); // ["Background", "Fur", "Eyes", ...]
@@ -339,7 +376,7 @@ console.log(`Brown Fur rarity: ${rarity.toFixed(2)}%`);
 Get all active listings for a collection with pagination.
 
 ```typescript
-const { listings, next } = await openseaSDK.api.getAllListings(
+const { listings, next } = await openseaSDK.api.listings.getAllListings(
   "boredapeyachtclub",
   100, // Limit
   undefined, // Next cursor
@@ -349,7 +386,7 @@ const { listings, next } = await openseaSDK.api.getAllListings(
 listings.forEach((listing) => {
   console.log(`Price: ${listing.price.current.value}`);
   console.log(
-    `Token ID: ${listing.protocolData.parameters.offer[0].identifierOrCriteria}`,
+    `Token ID: ${listing.protocolData?.parameters.offer[0].identifierOrCriteria}`,
   );
 });
 ```
@@ -375,10 +412,10 @@ listings.forEach((listing) => {
 Get the best (lowest price) active listing for a specific NFT.
 
 ```typescript
-const listing = await openseaSDK.api.getBestListing("boredapeyachtclub", "1");
+const listing = await openseaSDK.api.listings.getBestListing("boredapeyachtclub", "1");
 
 console.log(`Best price: ${listing.price.current.value}`);
-console.log(`Seller: ${listing.protocolData.parameters.offerer}`);
+console.log(`Seller: ${listing.protocolData?.parameters.offerer}`);
 ```
 
 **Parameters:**
@@ -398,7 +435,7 @@ console.log(`Seller: ${listing.protocolData.parameters.offerer}`);
 Get the best listings for each NFT in a collection.
 
 ```typescript
-const { listings, next } = await openseaSDK.api.getBestListings(
+const { listings, next } = await openseaSDK.api.listings.getBestListings(
   "boredapeyachtclub",
   100,
 );
@@ -418,51 +455,30 @@ const { listings, next } = await openseaSDK.api.getBestListings(
 
 ---
 
-### Get NFT Listings
+### Per-NFT listings
 
-Get all active listings for a specific NFT (not just the best one). Useful for showing all selling options.
+There is no endpoint that returns every active listing for a single NFT. This section previously
+documented `api.getNFTListings(...)`, which was removed in
+[#276](https://github.com/ProjectOpenSea/opensea-devtools/pull/276) and has no replacement, so the
+example here could not have run.
+
+Two calls cover what it was used for:
+
+- `api.listings.getBestListing(collectionSlug, tokenId)` for the cheapest listing on one NFT, which
+  is what a price display or an "is it listed" check needs.
+- `api.listings.getAllListings(collectionSlug, limit, next)` for every listing across a collection,
+  filtered client-side if you need one token.
 
 ```typescript
-const { listings, next } = await openseaSDK.api.getNFTListings(
-  "0xBC4CA0EdA7647A8aB7C2061c2E118A18a936f13D", // Contract address
-  "1", // Token ID
-  50, // Limit
-  undefined, // Next cursor
-  Chain.Mainnet,
+const bestListing = await openseaSDK.api.listings.getBestListing(
+  "boredapeyachtclub",
+  "1",
 );
 
-console.log(`Found ${listings.length} active listings for this NFT`);
-
-listings.forEach((listing) => {
-  const price = listing.price.current.value;
-  const decimals = listing.price.current.decimals;
-  const priceInEth = parseFloat(price) / Math.pow(10, decimals);
-  console.log(`Price: ${priceInEth} ETH`);
-  console.log(`Remaining quantity: ${listing.remaining_quantity}`);
-});
+const price = bestListing.price.current.value;
+const decimals = bestListing.price.current.decimals;
+console.log(`Cheapest: ${parseFloat(price) / 10 ** decimals} ETH`);
 ```
-
-**Parameters:**
-
-| Parameter                | Type    | Required | Description                               |
-| ------------------------ | ------- | -------- | ----------------------------------------- |
-| `assetContractAddress`   | string  | Yes      | NFT contract address                      |
-| `tokenId`                | string  | Yes      | Token ID                                  |
-| `limit`                  | number  | No       | Number of listings (1-100)                |
-| `next`                   | string  | No       | Pagination cursor                         |
-| `chain`                  | Chain   | No       | Blockchain (defaults to SDK chain)        |
-| `includePrivateListings` | boolean | No       | Include private listings (default: false) |
-
-**Returns:** `GetListingsResponse` containing:
-
-- `listings`: Array of all active listings for the NFT
-- `next`: Pagination cursor
-
-**Use Cases:**
-
-- Display all available purchase options for an NFT
-- Compare prices from different sellers
-- Show partially filled listings
 
 ---
 
@@ -473,7 +489,7 @@ listings.forEach((listing) => {
 Get all active offers for a collection.
 
 ```typescript
-const { offers, next } = await openseaSDK.api.getAllOffers(
+const { offers, next } = await openseaSDK.api.offers.getAllOffers(
   "boredapeyachtclub",
   100,
   undefined,
@@ -504,7 +520,7 @@ offers.forEach((offer) => {
 Get offers for NFTs with specific trait values.
 
 ```typescript
-const { offers, next } = await openseaSDK.api.getTraitOffers(
+const { offers, next } = await openseaSDK.api.offers.getTraitOffers(
   "boredapeyachtclub",
   "Fur", // Trait type
   "Golden Brown", // Trait value
@@ -536,10 +552,10 @@ const { offers, next } = await openseaSDK.api.getTraitOffers(
 Get the highest active offer for a specific NFT.
 
 ```typescript
-const offer = await openseaSDK.api.getBestOffer("boredapeyachtclub", "1");
+const offer = await openseaSDK.api.offers.getBestOffer("boredapeyachtclub", "1");
 
 console.log(`Best offer: ${offer.price.value}`);
-console.log(`Offerer: ${offer.protocolData.parameters.offerer}`);
+console.log(`Offerer: ${offer.protocolData?.parameters.offerer}`);
 ```
 
 **Parameters:**
@@ -558,12 +574,11 @@ console.log(`Offerer: ${offer.protocolData.parameters.offerer}`);
 Get all active offers for a specific NFT (not just the best one). Useful for showing all buying interest.
 
 ```typescript
-const { offers, next } = await openseaSDK.api.getNFTOffers(
-  "0xBC4CA0EdA7647A8aB7C2061c2E118A18a936f13D", // Contract address
+const { offers, next } = await openseaSDK.api.offers.getOffersByNFT(
+  "boredapeyachtclub", // Collection slug
   "1", // Token ID
   50, // Limit
   undefined, // Next cursor
-  Chain.Mainnet,
 );
 
 console.log(`Found ${offers.length} active offers for this NFT`);
@@ -572,20 +587,19 @@ offers.forEach((offer) => {
   const price = offer.price.value;
   const decimals = offer.price.decimals;
   const priceInEth = parseFloat(price) / Math.pow(10, decimals);
-  const offerer = offer.protocolData.parameters.offerer;
+  const offerer = offer.protocolData?.parameters.offerer;
   console.log(`${priceInEth} ETH from ${offerer}`);
 });
 ```
 
 **Parameters:**
 
-| Parameter              | Type   | Required | Description                        |
-| ---------------------- | ------ | -------- | ---------------------------------- |
-| `assetContractAddress` | string | Yes      | NFT contract address               |
-| `tokenId`              | string | Yes      | Token ID                           |
-| `limit`                | number | No       | Number of offers (1-100)           |
-| `next`                 | string | No       | Pagination cursor                  |
-| `chain`                | Chain  | No       | Blockchain (defaults to SDK chain) |
+| Parameter        | Type             | Required | Description              |
+| ---------------- | ---------------- | -------- | ------------------------ |
+| `collectionSlug` | string           | Yes      | Collection slug          |
+| `identifier`     | string \| number | Yes      | Token ID                 |
+| `limit`          | number           | No       | Number of offers (1-100) |
+| `next`           | string           | No       | Pagination cursor        |
 
 **Returns:** `GetOffersResponse` containing:
 
@@ -605,7 +619,7 @@ offers.forEach((offer) => {
 Build criteria offer data for collection or trait offers.
 
 ```typescript
-const offerData = await openseaSDK.api.buildOffer(
+const offerData = await openseaSDK.api.offers.buildOffer(
   "0x...", // Offerer address
   1, // Quantity
   "boredapeyachtclub", // Collection slug
@@ -615,7 +629,7 @@ const offerData = await openseaSDK.api.buildOffer(
 );
 
 // Multi-trait offers
-const multiTraitOffer = await openseaSDK.api.buildOffer(
+const multiTraitOffer = await openseaSDK.api.offers.buildOffer(
   "0x...",
   1,
   "boredapeyachtclub",
@@ -651,7 +665,7 @@ const multiTraitOffer = await openseaSDK.api.buildOffer(
 Get all collection-level offers for a collection.
 
 ```typescript
-const { offers, next } = await openseaSDK.api.getCollectionOffers(
+const { offers, next } = await openseaSDK.api.offers.getCollectionOffers(
   "boredapeyachtclub",
   100, // Limit
   undefined, // Next cursor
@@ -682,16 +696,16 @@ offers.forEach((offer) => {
 Submit a collection or trait offer to OpenSea.
 
 ```typescript
-const offer = await openseaSDK.api.postCollectionOffer(
-  orderProtocolData, // ProtocolData object
+const offer = await openseaSDK.api.offers.postCollectionOffer(
+  protocolData, // ProtocolData object
   "boredapeyachtclub", // Collection slug
   "Fur", // Optional: trait type
   "Golden Brown", // Optional: trait value
 );
 
 // Multi-trait collection offer
-const multiTraitOffer = await openseaSDK.api.postCollectionOffer(
-  orderProtocolData,
+const multiTraitOffer = await openseaSDK.api.offers.postCollectionOffer(
+  protocolData,
   "boredapeyachtclub",
   undefined, // Don't use traitType with traits array
   undefined, // Don't use traitValue with traits array
@@ -724,13 +738,15 @@ const multiTraitOffer = await openseaSDK.api.postCollectionOffer(
 Fetch a single order by its unique hash.
 
 ```typescript
-const order = await openseaSDK.api.getOrderByHash(
+import { Chain } from "@opensea/sdk";
+
+const order = await openseaSDK.api.orders.getOrderByHash(
   "0x1234...", // Order hash
   "0x00000000000000ADc04C56Bf30aC9d3c0aAF14dC", // Seaport protocol address
   Chain.Mainnet, // Optional: chain
 );
 
-console.log(order.protocolData.parameters);
+console.log(order.protocolData?.parameters);
 ```
 
 **Parameters:**
@@ -756,7 +772,9 @@ console.log(order.protocolData.parameters);
 Generate the data needed to fulfill a listing or offer onchain.
 
 ```typescript
-const fulfillmentData = await openseaSDK.api.generateFulfillmentData(
+import { OrderSide } from "@opensea/sdk";
+
+const fulfillmentData = await openseaSDK.api.orders.generateFulfillmentData(
   "0x...", // Fulfiller address
   "0x1234...", // Order hash
   "0x00000000000000ADc04C56Bf30aC9d3c0aAF14dC", // Protocol address
@@ -792,7 +810,7 @@ const fulfillmentData = await openseaSDK.api.generateFulfillmentData(
 Submit a signed listing to OpenSea. Returns the new v2 Listing response format.
 
 ```typescript
-const listing = await openseaSDK.api.postListing(
+const listing = await openseaSDK.api.orders.postListing(
   protocolData, // Signed Seaport order
   "0x00000000000000ADc04C56Bf30aC9d3c0aAF14dC", // Seaport protocol address
 );
@@ -814,7 +832,7 @@ const listing = await openseaSDK.api.postListing(
 Submit a signed offer to OpenSea. Returns the new v2 Offer response format.
 
 ```typescript
-const offer = await openseaSDK.api.postOffer(
+const offer = await openseaSDK.api.orders.postOffer(
   protocolData, // Signed Seaport order
   "0x00000000000000ADc04C56Bf30aC9d3c0aAF14dC", // Seaport protocol address
 );
@@ -836,7 +854,9 @@ const offer = await openseaSDK.api.postOffer(
 Cancel an order off-chain (gas-free) when protected by SignedZone.
 
 ```typescript
-const result = await openseaSDK.api.offchainCancelOrder(
+import { Chain } from "@opensea/sdk";
+
+const result = await openseaSDK.api.orders.offchainCancelOrder(
   "0x00000000000000ADc04C56Bf30aC9d3c0aAF14dC", // Protocol address
   "0x1234...", // Order hash
   Chain.Mainnet, // Optional: chain
@@ -875,7 +895,7 @@ console.log(
 Fetch account profile information from OpenSea.
 
 ```typescript
-const account = await openseaSDK.api.getAccount(
+const account = await openseaSDK.api.accounts.getAccount(
   "0xfBa662e1a8e91a350702cF3b87D0C2d2Fb4BA57F",
 );
 
@@ -899,7 +919,9 @@ console.log(account.profileImageUrl);
 Fetch details about a payment token (ERC20) used on OpenSea.
 
 ```typescript
-const token = await openseaSDK.api.getPaymentToken(
+import { Chain } from "@opensea/sdk";
+
+const token = await openseaSDK.api.accounts.getPaymentToken(
   "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", // WETH address
   Chain.Mainnet,
 );
@@ -929,7 +951,9 @@ Events include sales, transfers, listings, offers, and cancellations.
 Fetch all events with optional filtering.
 
 ```typescript
-const { asset_events, next } = await openseaSDK.api.getEvents({
+import { AssetEventType } from "@opensea/sdk";
+
+const { assetEvents, next } = await openseaSDK.api.events.getEvents({
   eventType: AssetEventType.SALE,
   limit: 50,
   after: 1672531200, // Unix timestamp
@@ -937,9 +961,9 @@ const { asset_events, next } = await openseaSDK.api.getEvents({
   chain: "ethereum",
 });
 
-asset_events.forEach((event) => {
+assetEvents.forEach((event) => {
   if (event.eventType === "sale") {
-    console.log(`Sale: ${event.payment.quantity} at ${event.event_timestamp}`);
+    console.log(`Sale: ${event.payment.quantity} at ${event.eventTimestamp}`);
   }
 });
 ```
@@ -967,7 +991,7 @@ asset_events.forEach((event) => {
 
 **Returns:** `GetEventsResponse` containing:
 
-- `asset_events`: Array of event objects
+- `assetEvents`: Array of event objects
 - `next`: Pagination cursor
 
 ---
@@ -977,7 +1001,9 @@ asset_events.forEach((event) => {
 Fetch events for a specific account.
 
 ```typescript
-const { asset_events } = await openseaSDK.api.getEventsByAccount(
+import { AssetEventType } from "@opensea/sdk";
+
+const { assetEvents } = await openseaSDK.api.events.getEventsByAccount(
   "0xfBa662e1a8e91a350702cF3b87D0C2d2Fb4BA57F",
   {
     eventType: AssetEventType.SALE,
@@ -1002,7 +1028,9 @@ const { asset_events } = await openseaSDK.api.getEventsByAccount(
 Fetch events for a specific collection.
 
 ```typescript
-const { asset_events } = await openseaSDK.api.getEventsByCollection(
+import { AssetEventType } from "@opensea/sdk";
+
+const { assetEvents } = await openseaSDK.api.events.getEventsByCollection(
   "boredapeyachtclub",
   {
     eventType: AssetEventType.SALE,
@@ -1013,7 +1041,7 @@ const { asset_events } = await openseaSDK.api.getEventsByCollection(
 
 // Calculate total volume in last 24 hours
 let totalVolume = 0n;
-asset_events.forEach((event) => {
+assetEvents.forEach((event) => {
   if (event.eventType === "sale") {
     totalVolume += BigInt(event.payment.quantity);
   }
@@ -1036,7 +1064,9 @@ asset_events.forEach((event) => {
 Fetch events for a specific NFT.
 
 ```typescript
-const { asset_events } = await openseaSDK.api.getEventsByNFT(
+import { AssetEventType, Chain } from "@opensea/sdk";
+
+const { assetEvents } = await openseaSDK.api.events.getEventsByNFT(
   Chain.Mainnet,
   "0xBC4CA0EdA7647A8aB7C2061c2E118A18a936f13D",
   "1",
@@ -1046,10 +1076,10 @@ const { asset_events } = await openseaSDK.api.getEventsByNFT(
 );
 
 // Show sale history
-asset_events.forEach((event) => {
+assetEvents.forEach((event) => {
   if (event.eventType === "sale") {
     const price = event.payment.quantity;
-    const date = new Date(event.event_timestamp * 1000);
+    const date = new Date(event.eventTimestamp * 1000);
     console.log(`Sold for ${price} on ${date.toLocaleDateString()}`);
   }
 });
@@ -1072,17 +1102,17 @@ asset_events.forEach((event) => {
 
 ### Sale Events
 
-```typescript
-{
+```ts
+type SaleEvent = {
   eventType: "sale",
-  event_timestamp: 1234567890,
+  eventTimestamp: 1234567890,
   chain: "ethereum",
   transaction: "0x...",
   seller: "0x...",
   buyer: "0x...",
   payment: {
     quantity: "1000000000000000000",
-    token_address: "0x0000000000000000000000000000000000000000",
+    tokenAddress: "0x0000000000000000000000000000000000000000",
     decimals: 18,
     symbol: "ETH"
   },
@@ -1092,29 +1122,29 @@ asset_events.forEach((event) => {
 
 ### Order Events (Listings/Offers)
 
-```typescript
-{
+```ts
+type OrderEvent = {
   eventType: "order",
   orderType: "listing" | "item_offer" | "collection_offer" | "trait_offer",
-  event_timestamp: 1234567890,
+  eventTimestamp: 1234567890,
   maker: "0x...",
   taker: "0x...",
   payment: { /* payment details */ },
-  expiration_date: 1234567890,
-  is_private_listing: false,
+  expirationDate: 1234567890,
+  isPrivateListing: false,
   asset: { /* NFT details or null for collection offers */ }
 }
 ```
 
 ### Transfer Events
 
-```typescript
-{
+```ts
+type TransferEvent = {
   eventType: "transfer",
-  event_timestamp: 1234567890,
+  eventTimestamp: 1234567890,
   transaction: "0x...",
-  from_address: "0x...",
-  to_address: "0x...",
+  fromAddress: "0x...",
+  toAddress: "0x...",
   nft: { /* NFT details */ }
 }
 ```
@@ -1128,12 +1158,12 @@ asset_events.forEach((event) => {
 Fetch a list of trending tokens with pagination.
 
 ```typescript
-const { tokens, next } = await openseaSDK.api.getTrendingTokens({
+const { tokens, next } = await openseaSDK.api.tokens.getTrendingTokens({
   limit: 20,
 });
 
 tokens.forEach((token) => {
-  console.log(`${token.name} (${token.symbol}): $${token.usd_price}`);
+  console.log(`${token.name} (${token.symbol}): $${token.usdPrice}`);
 });
 ```
 
@@ -1156,12 +1186,12 @@ tokens.forEach((token) => {
 Fetch a list of top tokens with pagination.
 
 ```typescript
-const { tokens, next } = await openseaSDK.api.getTopTokens({
+const { tokens, next } = await openseaSDK.api.tokens.getTopTokens({
   limit: 20,
 });
 
 tokens.forEach((token) => {
-  console.log(`${token.name} (${token.symbol}): $${token.usd_price}`);
+  console.log(`${token.name} (${token.symbol}): $${token.usdPrice}`);
 });
 ```
 
@@ -1184,7 +1214,7 @@ tokens.forEach((token) => {
 Get a swap quote for exchanging tokens.
 
 ```typescript
-const quote = await openseaSDK.api.getSwapQuote({
+const quote = await openseaSDK.api.tokens.getSwapQuote({
   fromChain: "ethereum",
   fromAddress: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", // WETH
   toChain: "ethereum",
@@ -1219,7 +1249,7 @@ Set `fromChain` and `toChain` to different chains for cross-chain swaps.
 Fetch details for a specific token by chain and contract address.
 
 ```typescript
-const token = await openseaSDK.api.getToken(
+const token = await openseaSDK.api.tokens.getToken(
   "ethereum", // Chain
   "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", // Token address
 );
@@ -1243,8 +1273,10 @@ console.log(`${token.name} (${token.symbol})`);
 Fetch materialized trade count, USD volume, and average trade size for a token.
 
 ```typescript
-const activity = await openseaSDK.api.getTokenActivityStats(
-  "base",
+import { Chain } from "@opensea/sdk";
+
+const activity = await openseaSDK.api.tokens.getTokenActivityStats(
+  Chain.Base,
   "0x4200000000000000000000000000000000000006",
   { windows: ["1h", "24h"] },
 );
@@ -1277,7 +1309,7 @@ Search across collections, tokens, NFTs, and accounts. Results are ranked by rel
 const results = await openseaSDK.api.search({
   query: "bored ape",
   chains: ["ethereum"], // Optional: filter by chain
-  asset_types: ["collection", "nft"], // Optional: filter by type
+  assetTypes: ["collection", "nft"], // Optional: filter by type
   limit: 20, // Optional: number of results (default: 20, max: 50)
 });
 
@@ -1287,7 +1319,7 @@ results.results.forEach((result) => {
   } else if (result.type === "nft" && result.nft) {
     console.log(`NFT: ${result.nft.name}`);
   } else if (result.type === "token" && result.token) {
-    console.log(`Token: ${result.token.name} ($${result.token.usd_price})`);
+    console.log(`Token: ${result.token.name} ($${result.token.usdPrice})`);
   } else if (result.type === "account" && result.account) {
     console.log(`Account: ${result.account.username}`);
   }
@@ -1300,7 +1332,7 @@ results.results.forEach((result) => {
 | ------------- | -------- | -------- | ---------------------------------------------------------- |
 | `query`       | string   | Yes      | Search query text                                          |
 | `chains`      | string[] | No       | Filter by blockchain(s)                                    |
-| `asset_types` | string[] | No       | Filter by type: "collection", "nft", "token", or "account" |
+| `assetTypes` | string[] | No       | Filter by type: "collection", "nft", "token", or "account" |
 | `limit`       | number   | No       | Number of results (default: 20, max: 50)                   |
 
 **Returns:** `SearchResponse` containing:
@@ -1314,16 +1346,19 @@ results.results.forEach((result) => {
 Most list endpoints support pagination using cursor-based navigation:
 
 ```typescript
+import { type Listing } from "@opensea/sdk";
+
 let cursor: string | undefined;
-const allResults: any[] = [];
+const allResults: Listing[] = [];
 
 do {
-  const response = await openseaSDK.api.getOrders({
-    side: OrderSide.LISTING,
-    next: cursor,
-  });
+  const response = await openseaSDK.api.listings.getAllListings(
+    "boredapeyachtclub",
+    100,
+    cursor,
+  );
 
-  allResults.push(...response.orders);
+  allResults.push(...response.listings);
   cursor = response.next;
 } while (cursor);
 
@@ -1354,15 +1389,17 @@ The SDK automatically handles rate limiting with exponential backoff:
 
 ```typescript
 try {
-  const order = await openseaSDK.api.getOrder({
-    side: OrderSide.LISTING,
-    assetContractAddress: "0x...",
-    tokenIds: ["1"],
-  });
+  const listing = await openseaSDK.api.listings.getBestListing(
+    "boredapeyachtclub",
+    "1",
+  );
 } catch (error) {
+  if (!(error instanceof Error)) {
+    throw error;
+  }
   if (error.message.includes("Not found")) {
     console.log("No matching order found");
-  } else if (error.statusCode === 429) {
+  } else if ((error as { statusCode?: number }).statusCode === 429) {
     console.log("Rate limited, will retry automatically");
   } else {
     console.error("API error:", error.message);
@@ -1376,24 +1413,36 @@ try {
 
 ### Check if NFT has Active Listings
 
-```typescript
-const { listings } = await openseaSDK.api.getNFTListings(
-  contractAddress,
-  tokenId,
-  1, // Just need to know if any exist
-);
+The best-listing endpoint returns 404 when nothing is listed, which the SDK raises as an error
+rather than returning an empty result, so this is a `try`/`catch` rather than a length check.
 
-const hasListings = listings.length > 0;
+Narrow on the status code. A bare `catch` would report an NFT as unlisted on a rate limit, an
+expired key or a 500, which is the same wrong answer as a real 404 and impossible to tell apart.
+
+```typescript
+import type { OpenSeaApiError } from "@opensea/sdk";
+
+let hasListings: boolean;
+try {
+  await openseaSDK.api.listings.getBestListing("boredapeyachtclub", tokenId);
+  hasListings = true;
+} catch (error) {
+  if ((error as OpenSeaApiError).statusCode === 404) {
+    hasListings = false;
+  } else {
+    throw error;
+  }
+}
 ```
 
 ### Find Best Price for NFT
 
 ```typescript
-const bestListing = await openseaSDK.api.getBestListing(
+const bestListing = await openseaSDK.api.listings.getBestListing(
   collectionSlug,
   tokenId,
 );
-const bestOffer = await openseaSDK.api.getBestOffer(collectionSlug, tokenId);
+const bestOffer = await openseaSDK.api.offers.getBestOffer(collectionSlug, tokenId);
 
 const listingPrice = parseFloat(bestListing.price.current.value);
 const offerPrice = parseFloat(bestOffer.price.value);
@@ -1404,7 +1453,7 @@ console.log(`Spread: ${listingPrice - offerPrice} wei`);
 ### Build Trait Filter
 
 ```typescript
-const { categories, counts } = await openseaSDK.api.getTraits(collectionSlug);
+const { categories, counts } = await openseaSDK.api.collections.getTraits(collectionSlug);
 
 // Create filter UI
 Object.keys(categories).forEach((traitType) => {

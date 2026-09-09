@@ -32,7 +32,7 @@ hidden: false
 Fetch a single NFT by contract address and token ID:
 
 ```typescript
-const { nft } = await openseaSDK.api.getNFT(tokenAddress, tokenId);
+const { nft } = await openseaSDK.api.nfts.getNFT(tokenAddress, tokenId);
 ```
 
 **Additional NFT Methods:**
@@ -66,7 +66,8 @@ const ownsKitty = balance > 0n;
 
 ```typescript
 // Token ID and smart contract address for a non-fungible token:
-const { tokenId, tokenAddress } = YOUR_ASSET;
+const tokenId = "1";
+const tokenAddress = "0x1234...";
 // The offerer's wallet address:
 const accountAddress = "0x1234...";
 // Value of the offer, in units of the payment token (or WETH if none is specified)
@@ -124,7 +125,7 @@ Collection offers and trait offers are supported with `openseaSDK.createCollecti
 For **collection offers**, provide the collection slug:
 
 ```typescript
-const collection = await openseaSDK.api.getCollection("cool-cats-nft");
+const collection = await openseaSDK.api.collections.getCollection("cool-cats-nft");
 const offer = await openseaSDK.createCollectionOffer({
   collectionSlug: collection.collection,
   accountAddress: walletAddress,
@@ -178,21 +179,25 @@ const offer = await openseaSDK.createCollectionOffer({
 To retrieve offers and listings, use the collection-based or item-specific endpoints:
 
 ```typescript
+import { type NFT } from "@opensea/sdk";
+
 // Get all offers for a collection
-const { offers } = await openseaSDK.api.getAllOffers("cool-cats-nft");
+const { offers } = await openseaSDK.api.offers.getAllOffers("cool-cats-nft");
 
 // Get all listings for a collection
-const { listings } = await openseaSDK.api.getAllListings("cool-cats-nft");
+const { listings } = await openseaSDK.api.listings.getAllListings("cool-cats-nft");
 
-// Get offers for a specific NFT
-const { offers: nftOffers } = await openseaSDK.api.getNFTOffers(
-  tokenAddress,
+// Get offers for a specific NFT. Keyed by collection slug and token id, not by
+// contract address.
+const { offers: nftOffers } = await openseaSDK.api.offers.getOffersByNFT(
+  "cool-cats-nft",
   tokenId,
 );
 
-// Get listings for a specific NFT
-const { listings: nftListings } = await openseaSDK.api.getNFTListings(
-  tokenAddress,
+// Get the cheapest listing for a specific NFT. There is no per-NFT "all
+// listings" endpoint; use getAllListings above for a whole collection.
+const bestListing = await openseaSDK.api.listings.getBestListing(
+  "cool-cats-nft",
   tokenId,
 );
 ```
@@ -204,7 +209,7 @@ Note that the listing price of an asset is equal to the `currentPrice` of the **
 If you have an order hash, you can fetch the full order details directly:
 
 ```typescript
-const order = await openseaSDK.api.getOrderByHash(
+const order = await openseaSDK.api.orders.getOrderByHash(
   "0x...", // Order hash
   "0x00000000000000ADc04C56Bf30aC9d3c0aAF14dC", // Seaport 1.6
 );
@@ -218,10 +223,10 @@ There are dedicated methods that return all offers and listings for a given coll
 
 ```typescript
 // Get all offers for a collection
-const { offers } = await openseaSDK.api.getAllOffers("boredapeyachtclub");
+const { offers } = await openseaSDK.api.offers.getAllOffers("boredapeyachtclub");
 
 // Get all listings for a collection
-const { listings } = await openseaSDK.api.getAllListings("boredapeyachtclub");
+const { listings } = await openseaSDK.api.listings.getAllListings("boredapeyachtclub");
 ```
 
 Both methods support pagination with `limit` and `next` parameters.
@@ -232,10 +237,10 @@ Get the best (highest offer / lowest listing) for a specific NFT:
 
 ```typescript
 // Get best offer for an NFT
-const offer = await openseaSDK.api.getBestOffer("boredapeyachtclub", "1");
+const offer = await openseaSDK.api.offers.getBestOffer("boredapeyachtclub", "1");
 
 // Get best listing for an NFT
-const listing = await openseaSDK.api.getBestListing("boredapeyachtclub", "1");
+const listing = await openseaSDK.api.listings.getBestListing("boredapeyachtclub", "1");
 ```
 
 ## Fetching Events
@@ -249,7 +254,7 @@ Fetch all events with optional filters:
 ```typescript
 import { AssetEventType } from "@opensea/sdk";
 
-const { asset_events, next } = await openseaSDK.api.getEvents({
+const { assetEvents, next } = await openseaSDK.api.events.getEvents({
   eventType: AssetEventType.SALE, // Optional: filter by event type
   limit: 50, // Optional: limit results (default: 50)
   after: 1672531200, // Optional: filter events after timestamp
@@ -274,7 +279,9 @@ const { asset_events, next } = await openseaSDK.api.getEvents({
 Fetch events for a specific account address:
 
 ```typescript
-const { asset_events } = await openseaSDK.api.getEventsByAccount(
+import { AssetEventType } from "@opensea/sdk";
+
+const { assetEvents } = await openseaSDK.api.events.getEventsByAccount(
   "0x...", // Account address
   {
     eventType: AssetEventType.SALE,
@@ -288,7 +295,7 @@ const { asset_events } = await openseaSDK.api.getEventsByAccount(
 Fetch events for a specific collection:
 
 ```typescript
-const { asset_events } = await openseaSDK.api.getEventsByCollection(
+const { assetEvents } = await openseaSDK.api.events.getEventsByCollection(
   "cool-cats-nft", // Collection slug
   {
     limit: 100,
@@ -301,9 +308,9 @@ const { asset_events } = await openseaSDK.api.getEventsByCollection(
 Fetch events for a specific NFT:
 
 ```typescript
-import { Chain } from "@opensea/sdk";
+import { Chain, AssetEventType } from "@opensea/sdk";
 
-const { asset_events } = await openseaSDK.api.getEventsByNFT(
+const { assetEvents } = await openseaSDK.api.events.getEventsByNFT(
   Chain.Mainnet, // Chain
   "0x...", // Contract address
   "1", // Token ID
@@ -318,7 +325,7 @@ const { asset_events } = await openseaSDK.api.getEventsByNFT(
 Each event includes:
 
 - `eventType`: Type of event (sale, transfer, order, etc.)
-- `event_timestamp`: When the event occurred (Unix timestamp)
+- `eventTimestamp`: When the event occurred (Unix timestamp)
 - `chain`: Which blockchain the event occurred on
 - `quantity`: Number of items involved
 
@@ -334,12 +341,12 @@ For **order events** (listings/offers), additional fields include:
 - `orderType`: "listing", "item_offer", "collection_offer", or "trait_offer"
 - `maker` and `taker`: Wallet addresses
 - `payment`: Offer/listing amount
-- `expiration_date`: When the order expires
-- `is_private_listing`: Whether it's a private listing
+- `expirationDate`: When the order expires
+- `isPrivateListing`: Whether it's a private listing
 
 For **transfer events**, additional fields include:
 
-- `from_address` and `to_address`: Wallet addresses
+- `fromAddress` and `toAddress`: Wallet addresses
 - `transaction`: Transaction hash
 - `nft`: NFT details
 
@@ -348,17 +355,19 @@ For **transfer events**, additional fields include:
 Use the `next` cursor to fetch additional pages:
 
 ```typescript
+import { AssetEventType } from "@opensea/sdk";
+
 let cursor: string | undefined;
 const allEvents = [];
 
 do {
-  const response = await openseaSDK.api.getEvents({
+  const response = await openseaSDK.api.events.getEvents({
     eventType: AssetEventType.SALE,
     limit: 50,
     next: cursor,
   });
 
-  allEvents.push(...response.asset_events);
+  allEvents.push(...response.assetEvents);
   cursor = response.next;
 } while (cursor);
 ```
@@ -370,7 +379,7 @@ To buy an item, you need to **fulfill a listing**. To do that, it's just one cal
 ```typescript
 import { OrderSide } from "@opensea/sdk";
 
-const order = await openseaSDK.api.getOrderByHash(
+const order = await openseaSDK.api.orders.getOrderByHash(
   "0x...",
   "0x00000000000000ADc04C56Bf30aC9d3c0aAF14dC", // Seaport 1.6
 );
@@ -393,7 +402,7 @@ Similar to fulfilling listings above, you need to fulfill an offer on an item yo
 ```typescript
 import { OrderSide } from "@opensea/sdk";
 
-const order = await openseaSDK.api.getOrderByHash(
+const order = await openseaSDK.api.orders.getOrderByHash(
   "0x...",
   "0x00000000000000ADc04C56Bf30aC9d3c0aAF14dC", // Seaport 1.6
 );

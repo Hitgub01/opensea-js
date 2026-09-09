@@ -87,6 +87,91 @@ describe("API", () => {
     expect(traits.counts.fur_color).toEqual({ dark_brown: 12, darkBrown: 3 })
   })
 
+  test("getCollectionTraitFloors reaches the endpoint from the public surface", async () => {
+    // The 12.2.0 method lived only on the private CollectionsAPI field, so the release example
+    // threw on `sdk.api.collections` before making a request. Driving it from `OpenSeaAPI` with a
+    // stubbed transport is what the per-sub-client tests cannot cover, because they construct
+    // CollectionsAPI directly. See opensea-sdk#2007.
+    vi.useRealTimers()
+    fetchStub = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          chain: "ethereum",
+          floors: [
+            {
+              trait_type: "Background",
+              value: "Purple",
+              floor_price: 1.25,
+              payment_token_symbol: "ETH",
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    )
+    const localApi = new OpenSeaAPI({ apiKey: "key" })
+
+    const result = await localApi.getCollectionTraitFloors("boredapeyachtclub")
+
+    expect(fetchStub.mock.calls[0][0]).toBe(
+      "https://api.opensea.io/api/v2/traits/boredapeyachtclub/floors",
+    )
+    expect(result).toEqual({
+      chain: "ethereum",
+      floors: [
+        {
+          traitType: "Background",
+          value: "Purple",
+          floorPrice: 1.25,
+          paymentTokenSymbol: "ETH",
+        },
+      ],
+    })
+  })
+
+  test("the namespace and the deprecated flat method reach the same endpoint", async () => {
+    // The namespace is the supported call now, so it needs a test that actually makes the request
+    // rather than only a structural assertion that the property exists. Driving both and comparing
+    // is what shows the deprecated method is a true alias and not a second implementation.
+    vi.useRealTimers()
+    const body = { chain: "ethereum", floors: [] }
+    // A fresh Response per call: a body can only be read once, and both calls read one.
+    fetchStub = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(
+        async () => new Response(JSON.stringify(body), { status: 200 }),
+      )
+    const localApi = new OpenSeaAPI({ apiKey: "key" })
+
+    const viaNamespace =
+      await localApi.collections.getCollectionTraitFloors("boredapeyachtclub")
+    const viaFlat = await localApi.getCollectionTraitFloors("boredapeyachtclub")
+
+    expect(fetchStub.mock.calls[0][0]).toBe(
+      "https://api.opensea.io/api/v2/traits/boredapeyachtclub/floors",
+    )
+    expect(fetchStub.mock.calls[1][0]).toBe(fetchStub.mock.calls[0][0])
+    expect(viaNamespace).toEqual(viaFlat)
+    expect(viaNamespace).toEqual(body)
+  })
+
+  test("getCollectionTraitFloors encodes the slug into the path", async () => {
+    // A slug is caller-supplied, so an unencoded `/` would re-target the request at another path.
+    vi.useRealTimers()
+    fetchStub = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ chain: "ethereum", floors: [] }), {
+        status: 200,
+      }),
+    )
+    const localApi = new OpenSeaAPI({ apiKey: "key" })
+
+    await localApi.getCollectionTraitFloors("a/b")
+
+    expect(fetchStub.mock.calls[0][0]).toBe(
+      "https://api.opensea.io/api/v2/traits/a%2Fb/floors",
+    )
+  })
+
   test("camelizes other GET responses by default", async () => {
     // The traits opt-out must not leak into every other read.
     vi.useRealTimers()

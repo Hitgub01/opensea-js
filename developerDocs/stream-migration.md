@@ -29,8 +29,8 @@ npm install @opensea/sdk
 The old README told Node users to install both and pass them through
 `connectOptions`:
 
-```typescript
-// No longer necessary
+```typescript no-check
+// No longer necessary. Not type-checked: it imports two packages the SDK does not depend on.
 import { WebSocket } from "ws";
 import { LocalStorage } from "node-localstorage";
 
@@ -44,6 +44,8 @@ Node 22 and every browser provide a global `WebSocket`, which the client uses
 automatically:
 
 ```typescript
+import { OpenSeaStreamClient } from "@opensea/sdk/stream";
+
 const client = new OpenSeaStreamClient({ apiKey: "YOUR_API_KEY" });
 ```
 
@@ -53,8 +55,11 @@ never doing anything.
 
 On a runtime older than Node 22 you can still supply an implementation:
 
-```typescript
+```typescript no-check
+// Not type-checked: `ws` is your dependency, not the SDK's, so its types are not installed here.
 import { WebSocket } from "ws";
+import { OpenSeaStreamClient } from "@opensea/sdk/stream";
+
 const client = new OpenSeaStreamClient({
   apiKey: "YOUR_API_KEY",
   connectOptions: { transport: WebSocket },
@@ -94,6 +99,12 @@ for that collection. Two subscriptions on the same collection meant unsubscribin
 from one silently stopped the other:
 
 ```typescript
+import { OpenSeaStreamClient } from "@opensea/sdk/stream";
+
+const client = new OpenSeaStreamClient({ apiKey: "YOUR_API_KEY" });
+const onListing = console.log;
+const onSale = console.log;
+
 const stopListings = client.onItemListed("doodles-official", onListing);
 client.onItemSold("doodles-official", onSale);
 
@@ -113,6 +124,12 @@ returned unsubscribe function, or call `client.disconnect()` to drop everything.
 this combination silently produced a handler that never fired:
 
 ```typescript
+import { EventType, OpenSeaStreamClient } from "@opensea/sdk/stream";
+
+const client = new OpenSeaStreamClient({ apiKey: "YOUR_API_KEY" });
+const onListing = console.log;
+const onSale = console.log;
+
 client.onEvents("doodles-official", [EventType.ITEM_SOLD], onSale);
 // Before: the server kept filtering to item_sold, so onListing never fired.
 // Now:    the filter widens and both handlers receive their events.
@@ -124,6 +141,11 @@ be missed in the moment it takes to re-join. Subscribing with the full set up
 front avoids that:
 
 ```typescript
+import { EventType, OpenSeaStreamClient } from "@opensea/sdk/stream";
+
+const client = new OpenSeaStreamClient({ apiKey: "YOUR_API_KEY" });
+const handler = console.log;
+
 client.onEvents(
   "doodles-official",
   [EventType.ITEM_SOLD, EventType.ITEM_LISTED],
