@@ -1,5 +1,16 @@
 # @opensea/sdk
 
+## 12.5.0
+
+### Minor Changes
+
+- 4c8b9ab: Add `extractLinkedWallets(accessToken)`, which reads the `linked_wallets` claim so a caller can see every wallet the token's account has registered rather than only the primary `wallet` claim. The claim already contains the token's own wallet, so the result is the complete set and must not be combined with `extractWalletAddress`.
+
+### Patch Changes
+
+- Updated dependencies [3bca418]
+  - @opensea/api-types@0.10.0
+
 ## 12.4.1
 
 ### Patch Changes

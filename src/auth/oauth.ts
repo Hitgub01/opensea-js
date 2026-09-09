@@ -444,6 +444,43 @@ export function extractWalletAddress(
 }
 
 /**
+ * Read every wallet address the token's account has registered, from the
+ * `linked_wallets` claim.
+ *
+ * Webauth mints the claim from the account's registered wallets and it always
+ * contains the token's own {@link extractWalletAddress} wallet, so treat the
+ * result as the complete set rather than as "the other wallets". Combining it
+ * with the `wallet` claim double-counts the primary; using only the `wallet`
+ * claim under-reports every account that has linked more than one.
+ *
+ * Addresses may be from any chain OpenSea supports, EVM and Solana alike, so
+ * no format validation is applied here. An entry that is not a non-empty
+ * string is dropped, and everything else is returned for the server to judge.
+ * Returns an empty array when the claim is absent, is not an array, or the
+ * token is not a JWT.
+ *
+ * This does not verify the token and must not be used to make an authorization
+ * decision.
+ */
+export function extractLinkedWallets(accessToken: string): string[] {
+  try {
+    const claim = decodeJwtPayload(accessToken).linked_wallets
+    if (!Array.isArray(claim)) return []
+    const wallets = claim.filter(
+      (wallet): wallet is string =>
+        typeof wallet === "string" && wallet.trim().length > 0,
+    )
+    // Exact dedupe, not case-folded: EVM addresses differ only by checksum
+    // casing, but Solana base58 addresses are case-sensitive, so lowercasing
+    // to compare would risk collapsing two distinct Solana wallets into one.
+    return [...new Set(wallets)]
+  } catch {
+    // Opaque access tokens carry no claims to read.
+  }
+  return []
+}
+
+/**
  * Decode a JWT payload without verifying the signature. Intended for reading
  * claims out of a token the authorization server just issued to us over TLS —
  * NOT for validating inbound tokens.

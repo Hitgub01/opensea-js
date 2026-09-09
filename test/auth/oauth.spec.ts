@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import {
   decodeJwtPayload,
+  extractLinkedWallets,
   extractWalletAddress,
   OpenSeaOAuth,
 } from "../../src/auth/oauth"
@@ -597,5 +598,57 @@ describe("extractWalletAddress", () => {
   test("returns undefined when neither claim is present", () => {
     expect(extractWalletAddress({})).toBeUndefined()
     expect(extractWalletAddress({ wallet: "" })).toBeUndefined()
+  })
+})
+
+/**
+ * These mirror the cases the claim's producer already pins in os2-core
+ * (`WalletIdentityJwtVerifierTest`), so the SDK and the server agree on what
+ * the claim means rather than each guessing.
+ */
+describe("extractLinkedWallets", () => {
+  const EVM = "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+  const SOLANA = "5FHwkrdxntdK24hgQU8qgBjn35Y1zwhz1GZwCkP2UJnM"
+
+  test("returns every linked wallet, including the token's own", () => {
+    const token = jwt({ wallet: EVM, linked_wallets: [EVM, SOLANA] })
+
+    expect(extractLinkedWallets(token)).toEqual([EVM, SOLANA])
+    // The primary is already in the claim, so a caller must not add it back.
+    expect(extractLinkedWallets(token)).toContain(
+      extractWalletAddress({ wallet: EVM }),
+    )
+  })
+
+  test("de-duplicates repeated addresses", () => {
+    expect(
+      extractLinkedWallets(jwt({ linked_wallets: [EVM, SOLANA, EVM] })),
+    ).toEqual([EVM, SOLANA])
+  })
+
+  test("keeps Solana addresses that differ only by case", () => {
+    const lowercased = SOLANA.toLowerCase()
+
+    expect(
+      extractLinkedWallets(jwt({ linked_wallets: [SOLANA, lowercased] })),
+    ).toEqual([SOLANA, lowercased])
+  })
+
+  test("drops entries that are not non-empty strings", () => {
+    const token = jwt({
+      linked_wallets: [EVM, 42, "", "   ", null, { k: "v" }, SOLANA],
+    })
+
+    expect(extractLinkedWallets(token)).toEqual([EVM, SOLANA])
+  })
+
+  test("treats an absent or non-array claim as no linked wallets", () => {
+    expect(extractLinkedWallets(jwt({ wallet: EVM }))).toEqual([])
+    expect(extractLinkedWallets(jwt({ linked_wallets: EVM }))).toEqual([])
+    expect(extractLinkedWallets(jwt({ linked_wallets: null }))).toEqual([])
+  })
+
+  test("returns empty for a token that is not a JWT", () => {
+    expect(extractLinkedWallets("opaque-access-token")).toEqual([])
   })
 })
