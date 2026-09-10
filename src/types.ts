@@ -388,12 +388,42 @@ export interface RequestOptions {
    * names and trait values, so the default rewrite reports a `dark_brown` trait
    * as `darkBrown` and merges two traits that differ only in casing.
    *
-   * The return type stays the camelized view, so the caller is responsible for
-   * passing a `T` whose keys already match the wire shape. `GetTraitsResponse`
-   * qualifies because `Camelize<T>` passes index signatures through unchanged.
-   * Setting this to `false` with a `T` that has snake_case keys makes the
-   * declared type wrong: it will claim camelCase properties the response does
-   * not have. The flag does not narrow the return type, so nothing catches it.
+   * Write it as the literal `false` at the call site. `get`, `post` and
+   * `request` overload on that literal and return the raw `T` instead of
+   * `Camelize<T>`, so a snake_case `T` stays snake_case in the type as well as
+   * at runtime. A `boolean` whose value the compiler cannot see (a variable, or
+   * a property widened by a `const` declaration without `as const`) selects the
+   * camelized signature. That is accurate when the value turns out to be
+   * `true`, and wrong when it is `false`, because the runtime skips the rewrite
+   * and the declared type still claims camelCase properties the response does
+   * not have. See {@link RawResponseOptions}.
    */
   camelizeResponse?: boolean
 }
+
+/**
+ * The options shape that selects the un-camelized overload of `get`, `post`
+ * and `request`.
+ *
+ * `camelizeResponse` is the literal `false` rather than `boolean`, which is
+ * what lets the overload fire: TypeScript keeps the literal when the property
+ * is written inline at the call site or the object is declared `as const`, and
+ * widens it to `boolean` otherwise.
+ *
+ * @example
+ * ```ts
+ * type UploadPolicy = { upload_url: string; success_action_status: string }
+ *
+ * // Selects the raw overload. `policy.success_action_status` is typed and
+ * // present; `policy.successActionStatus` is a compile error.
+ * const policy = await api.get<UploadPolicy>(path, undefined, {
+ *   camelizeResponse: false,
+ * })
+ * ```
+ *
+ * @category API Models
+ */
+export type RawResponseOptions<O extends RequestOptions = RequestOptions> =
+  O & {
+    camelizeResponse: false
+  }

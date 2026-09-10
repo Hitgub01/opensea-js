@@ -101,12 +101,40 @@ data rather than field names: `getTraits` is keyed by collection-authored trait 
 rewrite would report a `dark_brown` trait as `darkBrown` and merge two traits that differ only in
 casing.
 
-The option does not change the declared return type, which stays `Camelize<T>` whether the rewrite
-ran or not. That is sound only where `Camelize<T>` and `T` are the same type, so pass a `T` whose
-keys already survive the rewrite unchanged. `GetTraitsResponse` qualifies because `Camelize<T>`
-passes index signatures through untouched. Pass a `T` with snake_case keys and the declared type
-claims camelCase properties the response does not have, which is the same trap this section is
-about, arriving from the other direction.
+Write it as the literal `false`. `api.get`, `api.post` and `api.request` overload on that literal
+and hand back the raw `T`, so the declared type is the wire shape the call actually returns:
+
+```typescript
+type UploadPolicy = { upload_url: string; success_action_status: string };
+
+const policy = await sdk.api.get<UploadPolicy>("/api/v2/some/path", undefined, {
+  camelizeResponse: false,
+});
+
+console.log(policy.success_action_status); // typed, and present at runtime
+
+// @ts-expect-error the rewrite did not run, so there is no `successActionStatus`
+console.log(policy.successActionStatus);
+```
+
+The literal is what selects that signature, and TypeScript keeps it only where the property is
+written inline at the call site or the object is declared `as const`. The two spellings below
+compile, and the runtime still skips the rewrite whenever the value is `false`, but the declared
+type is `Camelize<T>` either way, so it claims camelCase properties the response does not have:
+
+```typescript
+type UploadPolicy = { upload_url: string; success_action_status: string };
+declare const skipRewrite: boolean;
+
+// A boolean whose value the compiler cannot see.
+await sdk.api.get<UploadPolicy>("/api/v2/some/path", undefined, {
+  camelizeResponse: skipRewrite,
+});
+
+// A `const` declaration widens `false` to `boolean`; `as const` keeps the literal.
+const options = { camelizeResponse: false };
+await sdk.api.get<UploadPolicy>("/api/v2/some/path", undefined, options);
+```
 
 ## Quick Start
 

@@ -1,5 +1,19 @@
 # @opensea/sdk
 
+## 12.8.0
+
+### Minor Changes
+
+- 06dcdc3: Type `camelizeResponse: false` accurately on the raw `api.get`, `api.post` and `api.request` escape hatch.
+
+  The option turns off the snake_case to camelCase rewrite for one call, but the declared return type stayed `Camelize<T>` either way. Passing a snake_case `T` therefore produced a type claiming camelCase properties the response did not have, and reading one compiled and returned `undefined`.
+
+  Each of the three methods now carries two signatures. Writing the literal `false` selects the one that returns the raw `T`; every other spelling returns `Camelize<T>` exactly as before. That covers `{ camelizeResponse: false }` written at the call site, an options object declared `as const`, and a spread that keeps the literal.
+
+  Two spellings get `Camelize<T>` back regardless of the value: a `boolean` variable the compiler cannot see the value of, and an options object from a plain `const` declaration, which widens the property to `boolean`. That type is right when the value turns out to be `true` and wrong when it is `false`, which is the original mismatch. Both compile as they did before, so nothing that works today stops working. The README says which spellings land where.
+
+  Potentially breaking for type-checking. A call passing a literal `false` with a snake_case `T` now returns that snake_case type, so code reading a camelCase property off it stops compiling. That code was already reading `undefined` at runtime. Nothing in the SDK's own typed methods changes: `getTraits` is the package's user of the option, and `Camelize<T>` passes index signatures through untouched, so its raw and camelized types are the same.
+
 ## 12.7.0
 
 ### Minor Changes

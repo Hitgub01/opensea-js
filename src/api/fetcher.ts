@@ -1,4 +1,4 @@
-import type { RequestOptions } from "../types"
+import type { RawResponseOptions, RequestOptions } from "../types"
 import type { Camelize } from "../utils/case"
 
 /**
@@ -34,9 +34,35 @@ export type HttpMethod = "POST" | "PUT" | "PATCH" | "DELETE"
  * Responses are camelized at this boundary — pass the API's snake_case shape
  * (e.g. an api-types response type) as `T` and the return is the camelCase
  * view. See `utils/case.ts`. Endpoints whose response keys are data rather
- * than field names opt out with {@link RequestOptions.camelizeResponse}.
+ * than field names opt out with {@link RequestOptions.camelizeResponse}, and
+ * the literal-`false` overload returns the raw `T` so the declared type
+ * matches what the rewrite left alone.
+ *
+ * The overload describes what `OpenSeaAPI` does. An implementation supplied by
+ * a caller is trusted to honor `camelizeResponse` the same way, and TypeScript
+ * cannot check that: an implementation with one signature satisfies both, so a
+ * custom transport that always camelizes still type-checks here and would hand
+ * back camelCase where the raw overload promises the wire shape. That was true
+ * before this overload existed, in the other direction, since a custom
+ * transport that honored the flag returned raw data typed as `Camelize<T>`.
+ * The only in-package callers of the option are the four `UploadContext`
+ * helpers on `WalletAuthAPI` and `getTraits`, whose response types are
+ * identical under `Camelize`, so neither spelling can be wrong for them.
  */
 export interface Fetcher {
+  /**
+   * Generic fetch method for GET requests, with the response left in its wire
+   * shape. Selected by the literal `false`.
+   * @param apiPath Path to URL endpoint under API
+   * @param query URL query params. Will be used to create a URLSearchParams object.
+   * @param options Request options, with `camelizeResponse` set to `false`.
+   * @returns The API response, un-camelized.
+   */
+  get<T>(
+    apiPath: string,
+    query: object | undefined,
+    options: RawResponseOptions,
+  ): Promise<T>
   /**
    * Generic fetch method for GET requests with automatic rate limit retry
    * @param apiPath Path to URL endpoint under API
@@ -52,6 +78,21 @@ export interface Fetcher {
     options?: RequestOptions,
   ): Promise<Camelize<T>>
 
+  /**
+   * Generic post method for POST requests, with the response left in its wire
+   * shape. Selected by the literal `false`.
+   * @param apiPath Path to URL endpoint under API
+   * @param body Data to send.
+   * @param headers Additional headers to send with the request.
+   * @param options Request options, with `camelizeResponse` set to `false`.
+   * @returns The API response, un-camelized.
+   */
+  post<T>(
+    apiPath: string,
+    body: object | undefined,
+    headers: object | undefined,
+    options: RawResponseOptions<PostOptions>,
+  ): Promise<T>
   /**
    * Generic post method for POST requests with automatic rate limit retry
    * @param apiPath Path to URL endpoint under API
@@ -72,6 +113,14 @@ export interface Fetcher {
 
 /** Fetcher used by scoped wallet helpers that need every write verb. */
 export interface WalletAuthFetcher extends Fetcher {
+  /** Raw variant: the literal `false` returns the un-camelized `T`. */
+  request<T>(
+    method: HttpMethod,
+    apiPath: string,
+    body: object | undefined,
+    headers: object | undefined,
+    options: RawResponseOptions<PostOptions>,
+  ): Promise<T>
   request<T>(
     method: HttpMethod,
     apiPath: string,

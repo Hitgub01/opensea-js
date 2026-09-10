@@ -10,6 +10,7 @@ import {
   type OpenSeaPaymentToken,
   type OpenSeaRateLimitError,
   type OrderSide,
+  type RawResponseOptions,
   type RequestOptions,
 } from "../types"
 import {
@@ -164,7 +165,10 @@ import { WalletAuthAPI } from "./walletAuth"
  * leaves every renamed field `undefined` at runtime, while single-word keys
  * survive the rewrite and still read correctly. Use the camelized type this
  * package exports, or `Camelize<WireType>`. {@link RequestOptions.camelizeResponse}
- * turns the rewrite off where the response keys are data rather than field names.
+ * turns the rewrite off where the response keys are data rather than field
+ * names; written as the literal `false` on {@link OpenSeaAPI.get},
+ * {@link OpenSeaAPI.post} or {@link OpenSeaAPI.request}, it also selects the
+ * signature that returns the raw `T` instead of `Camelize<T>`.
  *
  * @category Main Classes
  */
@@ -1562,17 +1566,40 @@ export class OpenSeaAPI {
   }
 
   /**
+   * Generic fetch method for any API endpoint with automatic rate limit retry,
+   * with the response left in its wire shape.
+   *
+   * Selected by writing `camelizeResponse: false` as a literal. The rewrite is
+   * skipped at runtime and the return type is the raw `T`, so a snake_case `T`
+   * stays snake_case in both.
+   *
+   * @param apiPath Path to URL endpoint under API
+   * @param query URL query params. Will be used to create a URLSearchParams object.
+   * @param options Request options, with `camelizeResponse` set to `false`.
+   * @returns @typeParam T The un-camelized response from the API.
+   */
+  public get<T>(
+    apiPath: string,
+    query: object | undefined,
+    options: RawResponseOptions,
+  ): Promise<T>
+  /**
    * Generic fetch method for any API endpoint with automatic rate limit retry
    * @param apiPath Path to URL endpoint under API
    * @param query URL query params. Will be used to create a URLSearchParams object.
    * @param options Request options like timeout and abort signal.
    * @returns @typeParam T The response from the API.
    */
+  public get<T>(
+    apiPath: string,
+    query?: object,
+    options?: RequestOptions,
+  ): Promise<Camelize<T>>
   public async get<T>(
     apiPath: string,
     query: object = {},
     options?: RequestOptions,
-  ): Promise<Camelize<T>> {
+  ): Promise<Camelize<T> | T> {
     return executeWithRateLimit(
       async () => {
         // Snakeize query keys so consumers can pass camelCase args even
@@ -1589,6 +1616,23 @@ export class OpenSeaAPI {
   }
 
   /**
+   * Generic post method for any API endpoint with automatic rate limit retry,
+   * with the response left in its wire shape. Selected by writing
+   * `camelizeResponse: false` as a literal.
+   *
+   * @param apiPath Path to URL endpoint under API
+   * @param body Data to send.
+   * @param headers Additional headers to send with the request.
+   * @param options Request options, with `camelizeResponse` set to `false`.
+   * @returns @typeParam T The un-camelized response from the API.
+   */
+  public post<T>(
+    apiPath: string,
+    body: object | undefined,
+    headers: object | undefined,
+    options: RawResponseOptions<PostOptions>,
+  ): Promise<T>
+  /**
    * Generic post method for any API endpoint with automatic rate limit retry
    * @param apiPath Path to URL endpoint under API
    * @param body Data to send.
@@ -1599,23 +1643,47 @@ export class OpenSeaAPI {
    *                whose inner keys are camelCase on the wire).
    * @returns @typeParam T The response from the API.
    */
+  public post<T>(
+    apiPath: string,
+    body?: object,
+    headers?: object,
+    options?: PostOptions,
+  ): Promise<Camelize<T>>
   public async post<T>(
     apiPath: string,
     body?: object,
     headers?: object,
     options?: PostOptions,
-  ): Promise<Camelize<T>> {
-    return this.request("POST", apiPath, body, headers, options)
+  ): Promise<Camelize<T> | T> {
+    return this.request<T>("POST", apiPath, body, headers, options)
   }
 
+  /**
+   * Send a typed JSON request to a write endpoint, with the response left in
+   * its wire shape. Selected by writing `camelizeResponse: false` as a literal.
+   */
+  public request<T>(
+    method: HttpMethod,
+    apiPath: string,
+    body: object | undefined,
+    headers: object | undefined,
+    options: RawResponseOptions<PostOptions>,
+  ): Promise<T>
   /** Send a typed JSON request to a write endpoint. */
+  public request<T>(
+    method: HttpMethod,
+    apiPath: string,
+    body?: object,
+    headers?: object,
+    options?: PostOptions,
+  ): Promise<Camelize<T>>
   public async request<T>(
     method: HttpMethod,
     apiPath: string,
     body?: object,
     headers?: object,
     options?: PostOptions,
-  ): Promise<Camelize<T>> {
+  ): Promise<Camelize<T> | T> {
     return executeWithRateLimit(
       async () => {
         const url = `${this.apiBaseUrl}${apiPath}`
@@ -1644,9 +1712,9 @@ export class OpenSeaAPI {
   private camelizeResponseBody<T>(
     raw: unknown,
     options?: RequestOptions,
-  ): Camelize<T> {
+  ): Camelize<T> | T {
     return options?.camelizeResponse === false
-      ? (raw as Camelize<T>)
+      ? (raw as T)
       : (camelizeKeysDeep(raw) as Camelize<T>)
   }
 
