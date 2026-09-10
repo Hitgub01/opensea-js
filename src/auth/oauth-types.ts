@@ -1,3 +1,5 @@
+import type { FetchImpl } from "../utils/fetchTransport"
+
 /**
  * Configuration for the {@link OpenSeaOAuth} helper.
  */
@@ -15,6 +17,15 @@ export interface OpenSeaOAuthConfig {
    * connection stalling `opensea login` (or an SDK consumer) indefinitely.
    */
   timeoutMs?: number
+  /**
+   * Transport used for every request this instance makes to the authorization server,
+   * defaulting to the global `fetch`. Same seam as {@link OpenSeaAPIConfig.fetch}.
+   *
+   * It sees the PKCE code verifier, the device code and the returned token set, so anything it
+   * logs or caches is a credential. The per-request timeout is applied before the transport
+   * runs: it receives an init whose `signal` is already the timeout's.
+   */
+  fetch?: FetchImpl
 }
 
 /**

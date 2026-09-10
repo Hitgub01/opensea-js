@@ -1,3 +1,5 @@
+import type { FetchImpl } from "../utils/fetchTransport"
+
 /**
  * A scoped JWT token returned by the auth server.
  */
@@ -28,6 +30,16 @@ export interface OpenSeaAuthConfig {
   apiBaseUrl?: string
   /** @deprecated Use `apiBaseUrl`. */
   authBaseUrl?: string
+  /**
+   * Transport used for every request this instance makes, defaulting to the global `fetch`.
+   * Same seam as {@link OpenSeaAPIConfig.fetch}, so one wrapper can cover the auth flow and the
+   * API client.
+   *
+   * It sees the session cookie, the scoped token and the exchanged JWT, so anything it logs or
+   * caches is a credential. Nothing here is a cacheable representation: every call either
+   * mints, exchanges or revokes a token.
+   */
+  fetch?: FetchImpl
 }
 
 /**

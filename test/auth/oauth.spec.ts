@@ -2,8 +2,10 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import {
   decodeJwtPayload,
   extractLinkedWallets,
+  extractOpenSeaScopes,
   extractWalletAddress,
   OpenSeaOAuth,
+  tryDecodeJwtPayload,
 } from "../../src/auth/oauth"
 
 const ISSUER = "https://auth.example.com"
@@ -650,5 +652,80 @@ describe("extractLinkedWallets", () => {
 
   test("returns empty for a token that is not a JWT", () => {
     expect(extractLinkedWallets("opaque-access-token")).toEqual([])
+  })
+})
+
+/**
+ * The claim extractors return `[]` for a token they cannot read, which is
+ * indistinguishable from a token that genuinely carries nothing. That is the
+ * same silent under-report `extractLinkedWallets` exists to prevent, one level
+ * up, so callers need a way to tell the two apart.
+ */
+describe("tryDecodeJwtPayload", () => {
+  test("returns the payload for a JWT, matching decodeJwtPayload", () => {
+    const token = jwt({ wallet: "0xabc", linked_wallets: ["0xabc"] })
+
+    expect(tryDecodeJwtPayload(token)).toEqual(decodeJwtPayload(token))
+  })
+
+  test("returns null where decodeJwtPayload throws", () => {
+    // The pair disagreed before: one threw on an opaque token while the
+    // extractors quietly returned [] for the same input.
+    expect(() => decodeJwtPayload("opaque-access-token")).toThrow()
+    expect(tryDecodeJwtPayload("opaque-access-token")).toBeNull()
+  })
+
+  test("distinguishes an unreadable token from one with no linked wallets", () => {
+    const empty = jwt({ wallet: "0xabc", linked_wallets: [] })
+
+    expect(extractLinkedWallets(empty)).toEqual([])
+    expect(extractLinkedWallets("opaque-access-token")).toEqual([])
+    // Identical results above; only the decoder separates them.
+    expect(tryDecodeJwtPayload(empty)).not.toBeNull()
+    expect(tryDecodeJwtPayload("opaque-access-token")).toBeNull()
+  })
+
+  test("both extractors still degrade rather than throw on an opaque token", () => {
+    expect(extractLinkedWallets("opaque-access-token")).toEqual([])
+    expect(extractOpenSeaScopes("opaque-access-token")).toEqual([])
+  })
+
+  test("treats a malformed JWT the same as an opaque token", () => {
+    // Three segments, so it looks like a JWT, but the payload is not decodable.
+    // This is the dangerous case the comments call out: an opaque token is a
+    // deliberate choice, a corrupted one is indistinguishable from an account
+    // with a single wallet.
+    const malformed = "header.!!!not-base64!!!.signature"
+
+    expect(tryDecodeJwtPayload(malformed)).toBeNull()
+    expect(extractLinkedWallets(malformed)).toEqual([])
+    expect(extractOpenSeaScopes(malformed)).toEqual([])
+  })
+
+  test("treats a JWT whose payload is valid base64 but not JSON as unreadable", () => {
+    const notJson = `header.${Buffer.from("plain text").toString("base64url")}.sig`
+
+    expect(tryDecodeJwtPayload(notJson)).toBeNull()
+    expect(extractLinkedWallets(notJson)).toEqual([])
+    expect(extractOpenSeaScopes(notJson)).toEqual([])
+  })
+
+  // JSON.parse returns these happily, so before validation decodeJwtPayload
+  // asserted a number or an array to Record<string, unknown> and
+  // tryDecodeJwtPayload reported a readable token. The `=== null` guidance
+  // documented on extractLinkedWallets was wrong for exactly these inputs.
+  test.each([
+    ["a number", "123"],
+    ["a string", '"not-an-object"'],
+    ["an array", "[1,2]"],
+    ["a boolean", "true"],
+    ["null", "null"],
+  ])("treats a JWT whose payload is %s as unreadable", (_label, payload) => {
+    const token = `header.${Buffer.from(payload).toString("base64url")}.sig`
+
+    expect(tryDecodeJwtPayload(token)).toBeNull()
+    expect(() => decodeJwtPayload(token)).toThrow()
+    expect(extractLinkedWallets(token)).toEqual([])
+    expect(extractOpenSeaScopes(token)).toEqual([])
   })
 })

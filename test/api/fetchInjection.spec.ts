@@ -115,4 +115,33 @@ describe("fetch injection", () => {
 
     await expect(api.getCollection("azuki")).rejects.toThrow("transport down")
   })
+
+  describe("requestInstantApiKey", () => {
+    // The static has no instance to read `OpenSeaAPIConfig.fetch` from, so it takes a transport
+    // of its own. Without it a consumer that routes everything through one transport has a hole
+    // at the first call it makes.
+    test("uses the transport passed to it", async () => {
+      const injected = vi.fn().mockResolvedValue(ok({ api_key: "new-key" }))
+      const globalFetch = vi.spyOn(globalThis, "fetch")
+
+      const result = await OpenSeaAPI.requestInstantApiKey(
+        "https://api.opensea.io",
+        { fetch: injected },
+      )
+
+      expect(result.apiKey).toBe("new-key")
+      expect(injected).toHaveBeenCalledTimes(1)
+      expect(globalFetch).not.toHaveBeenCalled()
+    })
+
+    test("falls back to the global fetch when none is passed", async () => {
+      const globalFetch = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(ok({ api_key: "new-key" }))
+
+      await OpenSeaAPI.requestInstantApiKey()
+
+      expect(globalFetch).toHaveBeenCalledTimes(1)
+    })
+  })
 })

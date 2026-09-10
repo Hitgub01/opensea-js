@@ -43,11 +43,29 @@ export interface BulkOrderResult<T extends Listing | Offer = Listing | Offer> {
   failed: Array<{
     /** Index of the failed order in the original input array */
     index: number
-    /** The signed order that failed to submit (undefined if order creation failed before signing) */
+    /**
+     * The signed order that failed to submit. When a bulk call received a
+     * single order and creating it threw, there is nothing signed to report
+     * and this is an empty object rather than a real order, so check for the
+     * seaport fields before reading them.
+     */
     order?: ProtocolData
     /** The error that occurred during submission */
     error: Error
   }>
+}
+
+/**
+ * Normalizes a caller-supplied salt for seaport-js.
+ *
+ * seaport-js only generates a salt when the field is `undefined`, and that
+ * generated salt carries the domain tag (the first four bytes of
+ * `keccak256(domain)`) used for onchain attribution. Any defined value,
+ * including `0`, suppresses both. So an omitted salt has to stay omitted all
+ * the way through, and an explicit `0` has to survive as `"0"`.
+ */
+function normalizeSalt(salt: Amount | undefined): string | undefined {
+  return salt !== undefined ? BigInt(salt).toString() : undefined
 }
 
 /**
@@ -142,6 +160,112 @@ export class OrdersManager {
   }
 
   /**
+   * The single-order path a bulk call takes when it receives exactly one
+   * order. A bulk signature costs more to decode onchain because of the merkle
+   * proof, so one order goes through the normal single-order signature.
+   */
+  private async createOneForBulk<T extends Listing | Offer>(
+    create: () => Promise<T>,
+    continueOnError: boolean,
+  ): Promise<BulkOrderResult<T>> {
+    try {
+      const order = await create()
+      return {
+        successful: [order],
+        failed: [],
+      }
+    } catch (error) {
+      if (continueOnError) {
+        return {
+          successful: [],
+          failed: [
+            {
+              index: 0,
+              order: {} as ProtocolData, // Order wasn't created
+              error: error as Error,
+            },
+          ],
+        }
+      }
+      throw error
+    }
+  }
+
+  /**
+   * Submits bulk-signed orders to the OpenSea API one at a time and collects
+   * the outcome. Rate limiting is handled by the API client.
+   *
+   * Shared by createBulkListings and createBulkOffers so that submission
+   * ordering, continueOnError and progress reporting cannot drift apart
+   * between the two.
+   */
+  private async submitBulkSignedOrders<T extends Listing | Offer>({
+    orders,
+    noun,
+    post,
+    continueOnError,
+    onProgress,
+  }: {
+    orders: ProtocolData[]
+    noun: string
+    post: (order: ProtocolData) => Promise<T>
+    continueOnError: boolean
+    onProgress?: (completed: number, total: number) => void
+  }): Promise<BulkOrderResult<T>> {
+    this.context.logger(
+      `Starting submission of ${orders.length} bulk-signed ${pluralize(orders.length, noun)} to OpenSea API...`,
+    )
+
+    const submittedOrders: T[] = []
+    const failedOrders: BulkOrderResult["failed"] = []
+
+    for (let i = 0; i < orders.length; i++) {
+      this.context.logger(`Submitting ${noun} ${i + 1}/${orders.length}...`)
+      try {
+        const submittedOrder = await post(orders[i])
+        submittedOrders.push(submittedOrder)
+        this.context.logger(`Completed ${noun} ${i + 1}/${orders.length}`)
+      } catch (error) {
+        const errorMessage = (error as Error).message
+        this.context.logger(
+          `Failed ${noun} ${i + 1}/${orders.length}: ${errorMessage}`,
+        )
+        failedOrders.push({
+          index: i,
+          order: orders[i],
+          error: error as Error,
+        })
+
+        // If not continuing on error, throw immediately
+        if (!continueOnError) {
+          throw error
+        }
+      }
+
+      // Reached for each order that finished, submitted or failed. A failure
+      // with continueOnError false throws above and is never reported here.
+      onProgress?.(i + 1, orders.length)
+    }
+
+    if (submittedOrders.length > 0) {
+      this.context.logger(
+        `Successfully submitted ${submittedOrders.length}/${orders.length} ${pluralize(submittedOrders.length, noun)}`,
+      )
+    }
+
+    if (failedOrders.length > 0) {
+      this.context.logger(
+        `Failed to submit ${failedOrders.length}/${orders.length} ${pluralize(failedOrders.length, noun)}`,
+      )
+    }
+
+    return {
+      successful: submittedOrders,
+      failed: failedOrders,
+    }
+  }
+
+  /**
    * Build listing order without submitting to API
    * @param options Listing parameters
    * @returns The seaport-js use case. Call `executeAllActions()` to approve and
@@ -225,7 +349,7 @@ export class OrdersManager {
           expirationTime?.toString() ?? oneMonthFromNowInSeconds().toString(),
         zone,
         domain,
-        salt: BigInt(salt ?? 0).toString(),
+        salt: normalizeSalt(salt),
         restrictedByZone: zone !== ZERO_ADDRESS,
         allowPartialFills: true,
       },
@@ -356,7 +480,7 @@ export class OrdersManager {
             : oneMonthFromNowInSeconds().toString(),
         zone,
         domain,
-        salt: BigInt(salt ?? 0).toString(),
+        salt: normalizeSalt(salt),
         restrictedByZone: zone !== ZERO_ADDRESS,
         allowPartialFills: true,
       },
@@ -539,7 +663,9 @@ export class OrdersManager {
    * @param options.listings Array of listing parameters. Each listing requires asset, amount, and optionally other listing parameters.
    * @param options.accountAddress Address of the wallet making the listings
    * @param options.continueOnError If true, continue submitting remaining listings even if some fail. Default: false (throw on first error).
-   * @param options.onProgress Optional callback for progress updates. Called after each listing is submitted (successfully or not).
+   * @param options.onProgress Optional callback for progress updates. Called after each
+   *   listing that finishes, whether it succeeded or failed. A failure when `continueOnError`
+   *   is false throws instead, so that listing is never reported.
    * @returns {@link BulkOrderResult} containing successful orders and any failures.
    *
    * @throws Error if listings array is empty
@@ -575,30 +701,10 @@ export class OrdersManager {
 
     // If only one listing, use normal signature to avoid bulk signature overhead
     if (listings.length === 1) {
-      try {
-        const order = await this.createListing({
-          ...listings[0],
-          accountAddress,
-        })
-        return {
-          successful: [order],
-          failed: [],
-        }
-      } catch (error) {
-        if (continueOnError) {
-          return {
-            successful: [],
-            failed: [
-              {
-                index: 0,
-                order: {} as ProtocolData, // Order wasn't created
-                error: error as Error,
-              },
-            ],
-          }
-        }
-        throw error
-      }
+      return this.createOneForBulk(
+        () => this.createListing({ ...listings[0], accountAddress }),
+        continueOnError,
+      )
     }
 
     await this.context.requireAccountIsAvailable(accountAddress)
@@ -608,6 +714,7 @@ export class OrdersManager {
       nft: NFT
       collection: OpenSeaCollection
       paymentTokenAddress: string
+      basePrice: bigint
       zone: string
       domain?: string
       salt?: Amount
@@ -620,13 +727,10 @@ export class OrdersManager {
       const {
         asset,
         amount,
-        quantity = 1,
         domain,
         salt,
         listingTime,
         expirationTime,
-        buyerAddress,
-        includeOptionalCreatorFees = false,
         zone = ZERO_ADDRESS,
       } = listing
 
@@ -641,31 +745,13 @@ export class OrdersManager {
         collection.pricingCurrencies?.listingCurrency?.address ??
         getListingPaymentToken(this.context.chain)
 
-      const offerAssetItems = this.getNFTItems([nft], [BigInt(quantity ?? 1)])
-
+      // Priced here, in input order, so a bad amount throws on the first
+      // offending listing rather than out of the Promise.all below.
       const { basePrice } = await this.getPriceParametersCallback(
         OrderSide.LISTING,
         paymentTokenAddress,
         amount,
       )
-
-      const considerationFeeItems = await this.getFees({
-        collection,
-        seller: accountAddress,
-        paymentTokenAddress,
-        amount: basePrice,
-        includeOptionalCreatorFees,
-        isPrivateListing: !!buyerAddress,
-      })
-
-      if (buyerAddress) {
-        const { getPrivateListingConsiderations } = await import(
-          "../orders/privateListings"
-        )
-        considerationFeeItems.push(
-          ...getPrivateListingConsiderations(offerAssetItems, buyerAddress),
-        )
-      }
 
       let finalZone = zone
       if (collection.requiredZone) {
@@ -676,6 +762,7 @@ export class OrdersManager {
         nft,
         collection,
         paymentTokenAddress,
+        basePrice,
         zone: finalZone,
         domain,
         salt,
@@ -685,9 +772,8 @@ export class OrdersManager {
     }
 
     // Create the bulk orders using seaport's createBulkOrders method
-    const createOrderInputsForSeaport = listings.map((listing, index) => {
+    const createOrderInputsForSeaport = listings.map(async (listing, index) => {
       const {
-        amount,
         quantity = 1,
         listingTime,
         expirationTime,
@@ -701,44 +787,36 @@ export class OrdersManager {
         [BigInt(quantity ?? 1)],
       )
 
-      return this.getPriceParametersCallback(
-        OrderSide.LISTING,
-        metadata.paymentTokenAddress,
-        amount,
-      ).then(async ({ basePrice }) => {
-        const considerationFeeItems = await this.getFees({
-          collection: metadata.collection,
-          seller: accountAddress,
-          paymentTokenAddress: metadata.paymentTokenAddress,
-          amount: basePrice,
-          includeOptionalCreatorFees,
-          isPrivateListing: !!buyerAddress,
-        })
-
-        if (buyerAddress) {
-          const { getPrivateListingConsiderations } = await import(
-            "../orders/privateListings"
-          )
-          considerationFeeItems.push(
-            ...getPrivateListingConsiderations(offerAssetItems, buyerAddress),
-          )
-        }
-
-        return {
-          offer: offerAssetItems,
-          consideration: considerationFeeItems,
-          startTime: listingTime?.toString(),
-          endTime:
-            expirationTime?.toString() ?? oneMonthFromNowInSeconds().toString(),
-          zone: metadata.zone,
-          domain: metadata.domain,
-          salt: metadata.salt
-            ? BigInt(metadata.salt ?? 0).toString()
-            : undefined,
-          restrictedByZone: metadata.zone !== ZERO_ADDRESS,
-          allowPartialFills: true,
-        }
+      const considerationFeeItems = await this.getFees({
+        collection: metadata.collection,
+        seller: accountAddress,
+        paymentTokenAddress: metadata.paymentTokenAddress,
+        amount: metadata.basePrice,
+        includeOptionalCreatorFees,
+        isPrivateListing: !!buyerAddress,
       })
+
+      if (buyerAddress) {
+        const { getPrivateListingConsiderations } = await import(
+          "../orders/privateListings"
+        )
+        considerationFeeItems.push(
+          ...getPrivateListingConsiderations(offerAssetItems, buyerAddress),
+        )
+      }
+
+      return {
+        offer: offerAssetItems,
+        consideration: considerationFeeItems,
+        startTime: listingTime?.toString(),
+        endTime:
+          expirationTime?.toString() ?? oneMonthFromNowInSeconds().toString(),
+        zone: metadata.zone,
+        domain: metadata.domain,
+        salt: normalizeSalt(metadata.salt),
+        restrictedByZone: metadata.zone !== ZERO_ADDRESS,
+        allowPartialFills: true,
+      }
     })
 
     const resolvedInputs = await Promise.all(createOrderInputsForSeaport)
@@ -750,61 +828,17 @@ export class OrdersManager {
 
     const orders = await executeAllActions()
 
-    // Submit each order individually to the OpenSea API
-    // Rate limiting is handled automatically by the API client
-    this.context.logger(
-      `Starting submission of ${orders.length} bulk-signed ${pluralize(orders.length, "listing")} to OpenSea API...`,
-    )
-
-    const submittedOrders: Listing[] = []
-    const failedOrders: BulkOrderResult["failed"] = []
-
-    for (let i = 0; i < orders.length; i++) {
-      this.context.logger(`Submitting listing ${i + 1}/${orders.length}...`)
-      try {
-        const submittedOrder = await this.context.api.postListing(
-          orders[i],
+    return this.submitBulkSignedOrders({
+      orders,
+      noun: "listing",
+      post: order =>
+        this.context.api.postListing(
+          order,
           this.context.seaport.contract.target as string,
-        )
-        submittedOrders.push(submittedOrder)
-        this.context.logger(`Completed listing ${i + 1}/${orders.length}`)
-      } catch (error) {
-        const errorMessage = (error as Error).message
-        this.context.logger(
-          `Failed listing ${i + 1}/${orders.length}: ${errorMessage}`,
-        )
-        failedOrders.push({
-          index: i,
-          order: orders[i],
-          error: error as Error,
-        })
-
-        // If not continuing on error, throw immediately
-        if (!continueOnError) {
-          throw error
-        }
-      }
-
-      // Call progress callback after each listing (successful or failed)
-      onProgress?.(i + 1, orders.length)
-    }
-
-    if (submittedOrders.length > 0) {
-      this.context.logger(
-        `Successfully submitted ${submittedOrders.length}/${orders.length} ${pluralize(submittedOrders.length, "listing")}`,
-      )
-    }
-
-    if (failedOrders.length > 0) {
-      this.context.logger(
-        `Failed to submit ${failedOrders.length}/${orders.length} ${pluralize(failedOrders.length, "listing")}`,
-      )
-    }
-
-    return {
-      successful: submittedOrders,
-      failed: failedOrders,
-    }
+        ),
+      continueOnError,
+      onProgress,
+    })
   }
 
   /**
@@ -819,7 +853,9 @@ export class OrdersManager {
    * @param options.offers Array of offer parameters. Each offer requires asset, amount, and optionally other offer parameters.
    * @param options.accountAddress Address of the wallet making the offers
    * @param options.continueOnError If true, continue submitting remaining offers even if some fail. Default: false (throw on first error).
-   * @param options.onProgress Optional callback for progress updates. Called after each offer is submitted (successfully or not).
+   * @param options.onProgress Optional callback for progress updates. Called after each
+   *   offer that finishes, whether it succeeded or failed. A failure when `continueOnError`
+   *   is false throws instead, so that offer is never reported.
    * @returns {@link BulkOrderResult} containing successful orders and any failures.
    *
    * @throws Error if offers array is empty
@@ -852,30 +888,10 @@ export class OrdersManager {
 
     // If only one offer, use normal signature to avoid bulk signature overhead
     if (offers.length === 1) {
-      try {
-        const order = await this.createOffer({
-          ...offers[0],
-          accountAddress,
-        })
-        return {
-          successful: [order],
-          failed: [],
-        }
-      } catch (error) {
-        if (continueOnError) {
-          return {
-            successful: [],
-            failed: [
-              {
-                index: 0,
-                order: {} as ProtocolData, // Order wasn't created
-                error: error as Error,
-              },
-            ],
-          }
-        }
-        throw error
-      }
+      return this.createOneForBulk(
+        () => this.createOffer({ ...offers[0], accountAddress }),
+        continueOnError,
+      )
     }
 
     await this.context.requireAccountIsAvailable(accountAddress)
@@ -963,9 +979,7 @@ export class OrdersManager {
               : oneMonthFromNowInSeconds().toString(),
           zone: metadata.zone,
           domain: metadata.domain,
-          salt: metadata.salt
-            ? BigInt(metadata.salt ?? 0).toString()
-            : undefined,
+          salt: normalizeSalt(metadata.salt),
           restrictedByZone: metadata.zone !== ZERO_ADDRESS,
           allowPartialFills: true,
         }
@@ -981,61 +995,17 @@ export class OrdersManager {
 
     const orders = await executeAllActions()
 
-    // Submit each order individually to the OpenSea API
-    // Rate limiting is handled automatically by the API client
-    this.context.logger(
-      `Starting submission of ${orders.length} bulk-signed ${pluralize(orders.length, "offer")} to OpenSea API...`,
-    )
-
-    const submittedOrders: Offer[] = []
-    const failedOrders: BulkOrderResult["failed"] = []
-
-    for (let i = 0; i < orders.length; i++) {
-      this.context.logger(`Submitting offer ${i + 1}/${orders.length}...`)
-      try {
-        const submittedOrder = await this.context.api.postOffer(
-          orders[i],
+    return this.submitBulkSignedOrders({
+      orders,
+      noun: "offer",
+      post: order =>
+        this.context.api.postOffer(
+          order,
           this.context.seaport.contract.target as string,
-        )
-        submittedOrders.push(submittedOrder)
-        this.context.logger(`Completed offer ${i + 1}/${orders.length}`)
-      } catch (error) {
-        const errorMessage = (error as Error).message
-        this.context.logger(
-          `Failed offer ${i + 1}/${orders.length}: ${errorMessage}`,
-        )
-        failedOrders.push({
-          index: i,
-          order: orders[i],
-          error: error as Error,
-        })
-
-        // If not continuing on error, throw immediately
-        if (!continueOnError) {
-          throw error
-        }
-      }
-
-      // Call progress callback after each offer (successful or failed)
-      onProgress?.(i + 1, orders.length)
-    }
-
-    if (submittedOrders.length > 0) {
-      this.context.logger(
-        `Successfully submitted ${submittedOrders.length}/${orders.length} ${pluralize(submittedOrders.length, "offer")}`,
-      )
-    }
-
-    if (failedOrders.length > 0) {
-      this.context.logger(
-        `Failed to submit ${failedOrders.length}/${orders.length} ${pluralize(failedOrders.length, "offer")}`,
-      )
-    }
-
-    return {
-      successful: submittedOrders,
-      failed: failedOrders,
-    }
+        ),
+      continueOnError,
+      onProgress,
+    })
   }
 
   /**
@@ -1137,7 +1107,7 @@ export class OrdersManager {
         expirationTime?.toString() ?? oneMonthFromNowInSeconds().toString(),
       zone: buildOfferResult.partialParameters.zone,
       domain,
-      salt: BigInt(salt ?? 0).toString(),
+      salt: normalizeSalt(salt),
       restrictedByZone: true,
       allowPartialFills: true,
     }

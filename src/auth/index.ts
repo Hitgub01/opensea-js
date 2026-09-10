@@ -1,3 +1,4 @@
+import { type FetchImpl, fetchWith } from "../utils/fetchTransport"
 import { createSiwxMessage, parseSiwxMessage } from "./siwx"
 import type {
   AuthenticateOptions,
@@ -75,6 +76,8 @@ interface ScopedTokenExchangeResponse {
  */
 export class OpenSeaAuth {
   private readonly apiBaseUrl: string
+  /** Transport for every request this instance makes. See {@link OpenSeaAuthConfig.fetch}. */
+  private readonly fetchImpl: FetchImpl | undefined
   private cachedToken: AuthToken | undefined
   private scopedTokenId: string | undefined
   private sessionCookies: string | undefined
@@ -85,6 +88,9 @@ export class OpenSeaAuth {
       config.authBaseUrl ??
       DEFAULT_API_BASE_URL
     ).replace(/\/$/, "")
+    // Stored as given, including undefined: fetchWith falls back to globalThis.fetch at call
+    // time, so a caller who swaps globalThis.fetch after construction still takes effect.
+    this.fetchImpl = config.fetch
   }
 
   /** Run the current SIWE, scoped-token creation, and token-exchange flow. */
@@ -157,7 +163,8 @@ export class OpenSeaAuth {
     // The refresh token rotates, so retain the replacement if DELETE needs a
     // retry after a transient failure.
     this.sessionCookies = refreshedCookies
-    const response = await fetch(
+    const response = await fetchWith(
+      this.fetchImpl,
       `${this.apiBaseUrl}/api/v2/auth/tokens/${this.scopedTokenId}`,
       { method: "DELETE", headers: { Cookie: refreshedCookies } },
     )
@@ -169,10 +176,11 @@ export class OpenSeaAuth {
 
   /** Request a single-use SIWE nonce. */
   async requestNonce(): Promise<AuthNonceResponse> {
-    const response = await fetch(`${this.apiBaseUrl}/api/v2/auth/siwe/nonce`, {
-      method: "POST",
-      headers: { Accept: "application/json" },
-    })
+    const response = await fetchWith(
+      this.fetchImpl,
+      `${this.apiBaseUrl}/api/v2/auth/siwe/nonce`,
+      { method: "POST", headers: { Accept: "application/json" } },
+    )
     await requireOk(response, "Nonce request")
     return response.json() as Promise<AuthNonceResponse>
   }
@@ -181,15 +189,19 @@ export class OpenSeaAuth {
     message: string,
     signature: string,
   ): Promise<string> {
-    const response = await fetch(`${this.apiBaseUrl}/api/v2/auth/siwe/verify`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        message: parseSiwxMessage(message),
-        signature,
-        chainArch: "EVM",
-      }),
-    })
+    const response = await fetchWith(
+      this.fetchImpl,
+      `${this.apiBaseUrl}/api/v2/auth/siwe/verify`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: parseSiwxMessage(message),
+          signature,
+          chainArch: "EVM",
+        }),
+      },
+    )
     await requireOk(response, "SIWE verification")
     return extractSessionCookies(response.headers)
   }
@@ -198,15 +210,19 @@ export class OpenSeaAuth {
     cookie: string,
     scopes: string[],
   ): Promise<ScopedTokenCreatedResponse> {
-    const response = await fetch(`${this.apiBaseUrl}/api/v2/auth/tokens`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: cookie },
-      body: JSON.stringify({
-        label: `opensea-sdk-${Date.now()}`,
-        scopes,
-        expiresInDays: 1,
-      }),
-    })
+    const response = await fetchWith(
+      this.fetchImpl,
+      `${this.apiBaseUrl}/api/v2/auth/tokens`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: cookie },
+        body: JSON.stringify({
+          label: `opensea-sdk-${Date.now()}`,
+          scopes,
+          expiresInDays: 1,
+        }),
+      },
+    )
     await requireOk(response, "Scoped token creation")
     return response.json() as Promise<ScopedTokenCreatedResponse>
   }
@@ -214,7 +230,8 @@ export class OpenSeaAuth {
   private async exchangeScopedToken(
     scopedToken: string,
   ): Promise<ScopedTokenExchangeResponse> {
-    const response = await fetch(
+    const response = await fetchWith(
+      this.fetchImpl,
       `${this.apiBaseUrl}/api/v2/auth/tokens/exchange`,
       {
         method: "POST",
@@ -232,7 +249,8 @@ export class OpenSeaAuth {
   private async cleanupScopedToken(cookie: string, id: string): Promise<void> {
     for (let attempt = 0; attempt < SCOPED_TOKEN_CLEANUP_ATTEMPTS; attempt++) {
       try {
-        const response = await fetch(
+        const response = await fetchWith(
+          this.fetchImpl,
           `${this.apiBaseUrl}/api/v2/auth/tokens/${id}`,
           { method: "DELETE", headers: { Cookie: cookie } },
         )
@@ -244,7 +262,8 @@ export class OpenSeaAuth {
   }
 
   private async refreshSession(cookie: string): Promise<string> {
-    const response = await fetch(
+    const response = await fetchWith(
+      this.fetchImpl,
       `${this.apiBaseUrl}/api/v2/auth/session/refresh`,
       { method: "POST", headers: { Cookie: cookie } },
     )

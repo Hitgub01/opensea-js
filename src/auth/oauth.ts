@@ -1,4 +1,5 @@
 import { AUTH_SCOPES } from "@opensea/api-types"
+import { type FetchImpl, fetchWith } from "../utils/fetchTransport"
 import type {
   DeviceAuthorizationResponse,
   OAuthDiscoveryDocument,
@@ -55,6 +56,8 @@ export class OpenSeaOAuth {
   private readonly issuer: string
   private readonly clientId: string
   private readonly timeoutMs: number
+  /** Transport for every request this instance makes. See {@link OpenSeaOAuthConfig.fetch}. */
+  private readonly fetchImpl: FetchImpl | undefined
   private discovery: OAuthDiscoveryDocument | undefined
 
   constructor(config: OpenSeaOAuthConfig) {
@@ -66,6 +69,9 @@ export class OpenSeaOAuth {
     this.issuer = issuer
     this.clientId = config.clientId
     this.timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS
+    // Stored as given, including undefined: fetchWith falls back to globalThis.fetch at call
+    // time, so a caller who swaps globalThis.fetch after construction still takes effect.
+    this.fetchImpl = config.fetch
   }
 
   /**
@@ -284,7 +290,10 @@ export class OpenSeaOAuth {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), this.timeoutMs)
     try {
-      return await fetch(input, { ...init, signal: controller.signal })
+      return await fetchWith(this.fetchImpl, input, {
+        ...init,
+        signal: controller.signal,
+      })
     } catch (error) {
       // Detect our own timeout via the controller rather than the error type:
       // an aborted fetch rejects with a `DOMException` in browsers (not always
@@ -372,18 +381,16 @@ function canonicalOpenSeaScopes(scopes: string[]): string[] {
  * authorization decision.
  */
 export function extractOpenSeaScopes(accessToken: string): string[] {
-  try {
-    const claim = decodeJwtPayload(accessToken).opensea_scopes
-    if (typeof claim === "string") {
-      return canonicalOpenSeaScopes(claim.split(/\s+/).filter(Boolean))
-    }
-    if (Array.isArray(claim)) {
-      return canonicalOpenSeaScopes(
-        claim.filter((scope): scope is string => typeof scope === "string"),
-      )
-    }
-  } catch {
-    // Opaque access tokens cannot provide a scope fallback.
+  // An opaque token has no claims, and a malformed one cannot be read; either way
+  // there is no scope fallback here.
+  const claim = tryDecodeJwtPayload(accessToken)?.opensea_scopes
+  if (typeof claim === "string") {
+    return canonicalOpenSeaScopes(claim.split(/\s+/).filter(Boolean))
+  }
+  if (Array.isArray(claim)) {
+    return canonicalOpenSeaScopes(
+      claim.filter((scope): scope is string => typeof scope === "string"),
+    )
   }
   return []
 }
@@ -463,27 +470,52 @@ export function extractWalletAddress(
  * decision.
  */
 export function extractLinkedWallets(accessToken: string): string[] {
+  // An opaque token has no claims and a malformed one cannot be read, so `[]`
+  // here means "nothing readable" as well as "no linked wallets". A caller that
+  // must not silently under-report a portfolio should check
+  // `tryDecodeJwtPayload(token) === null` to tell those apart before treating an
+  // empty result as the whole picture. The malformed case is the dangerous one:
+  // an opaque token is a deliberate choice, a corrupted one looks identical to
+  // an account that simply has one wallet.
+  const claim = tryDecodeJwtPayload(accessToken)?.linked_wallets
+  if (!Array.isArray(claim)) return []
+  const wallets = claim.filter(
+    (wallet): wallet is string =>
+      typeof wallet === "string" && wallet.trim().length > 0,
+  )
+  // Exact dedupe, not case-folded: EVM addresses differ only by checksum
+  // casing, but Solana base58 addresses are case-sensitive, so lowercasing
+  // to compare would risk collapsing two distinct Solana wallets into one.
+  return [...new Set(wallets)]
+}
+
+/**
+ * Decode a JWT payload without verifying the signature, or return `null` when
+ * the token is not a readable JWT.
+ *
+ * OpenSea issues both JWT and opaque access tokens, so "not a JWT" is an
+ * expected input here rather than an error. Prefer this over wrapping
+ * {@link decodeJwtPayload} in a try/catch, and use it to tell "no claim to
+ * read" apart from "claim read, and it was empty" — {@link extractLinkedWallets}
+ * and {@link extractOpenSeaScopes} both return `[]` for either case.
+ */
+export function tryDecodeJwtPayload(
+  token: string,
+): Record<string, unknown> | null {
   try {
-    const claim = decodeJwtPayload(accessToken).linked_wallets
-    if (!Array.isArray(claim)) return []
-    const wallets = claim.filter(
-      (wallet): wallet is string =>
-        typeof wallet === "string" && wallet.trim().length > 0,
-    )
-    // Exact dedupe, not case-folded: EVM addresses differ only by checksum
-    // casing, but Solana base58 addresses are case-sensitive, so lowercasing
-    // to compare would risk collapsing two distinct Solana wallets into one.
-    return [...new Set(wallets)]
+    return decodeJwtPayload(token)
   } catch {
-    // Opaque access tokens carry no claims to read.
+    return null
   }
-  return []
 }
 
 /**
  * Decode a JWT payload without verifying the signature. Intended for reading
  * claims out of a token the authorization server just issued to us over TLS —
  * NOT for validating inbound tokens.
+ *
+ * Throws when `token` is not a JWT. {@link tryDecodeJwtPayload} is the
+ * non-throwing form, and is what the claim extractors in this module use.
  */
 export function decodeJwtPayload(token: string): Record<string, unknown> {
   const parts = token.split(".")
@@ -503,7 +535,19 @@ export function decodeJwtPayload(token: string): Record<string, unknown> {
           Uint8Array.from(atob(padded), c => c.charCodeAt(0)),
         )
       : Buffer.from(padded, "base64").toString("utf-8")
-  return JSON.parse(json) as Record<string, unknown>
+  const payload: unknown = JSON.parse(json)
+  // `JSON.parse` happily returns a number, string, boolean, array or null, and
+  // asserting any of those to Record<string, unknown> would be a lie that only
+  // shows up as `undefined` at the claim read. Rejecting them here is what lets
+  // tryDecodeJwtPayload returning null be the complete "unreadable" signal.
+  if (
+    typeof payload !== "object" ||
+    payload === null ||
+    Array.isArray(payload)
+  ) {
+    throw new Error("JWT payload is not an object")
+  }
+  return payload as Record<string, unknown>
 }
 
 function randomUrlSafeString(byteLength: number): string {

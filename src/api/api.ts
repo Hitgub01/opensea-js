@@ -17,6 +17,7 @@ import {
   camelizeKeysDeep,
   snakeizeKeysDeep,
 } from "../utils/case"
+import { type FetchImpl, fetchWith } from "../utils/fetchTransport"
 import { executeWithRateLimit } from "../utils/rateLimit"
 import { AccountsAPI } from "./accounts"
 import { getInstantApiKeyPath } from "./apiPaths"
@@ -155,6 +156,15 @@ import { WalletAuthAPI } from "./walletAuth"
 
 /**
  * The API class for the OpenSea SDK.
+ *
+ * Every method returns the camelCase view of the response. The API sends
+ * snake_case, and the `@opensea/api-types` type of the same name describes
+ * that wire shape, so annotating a return value here with one of those types
+ * leaves every renamed field `undefined` at runtime, while single-word keys
+ * survive the rewrite and still read correctly. Use the camelized type this
+ * package exports, or `Camelize<WireType>`. {@link RequestOptions.camelizeResponse}
+ * turns the rewrite off where the response keys are data rather than field names.
+ *
  * @category Main Classes
  */
 export class OpenSeaAPI {
@@ -174,7 +184,7 @@ export class OpenSeaAPI {
   private apiKey: string | undefined
   private authToken: string | undefined
   /** Transport for every instance request. See {@link OpenSeaAPIConfig.fetch}. */
-  private readonly fetchImpl: typeof globalThis.fetch
+  private readonly fetchImpl: FetchImpl | undefined
   private chain: Chain
 
   /**
@@ -209,10 +219,9 @@ export class OpenSeaAPI {
    * @param logger Optional function for logging debug strings before and after requests are made. Defaults to no logging
    */
   constructor(config: OpenSeaAPIConfig, logger?: (arg: string) => void) {
-    // Read through globalThis rather than captured at construction, so a caller who swaps
-    // globalThis.fetch afterwards still takes effect.
-    this.fetchImpl =
-      config.fetch ?? ((url, init) => globalThis.fetch(url, init))
+    // Stored as given, including undefined: fetchWith falls back to globalThis.fetch at call
+    // time, so a caller who swaps globalThis.fetch after construction still takes effect.
+    this.fetchImpl = config.fetch
     this.apiKey = config.apiKey
     this.authToken = config.authToken
     this.chain = config.chain ?? Chain.Mainnet
@@ -1718,11 +1727,9 @@ export class OpenSeaAPI {
     }
 
     try {
-      // .call(globalThis, ...) rather than a plain call: a caller can pass native fetch
-      // unbound (`fetch: globalThis.fetch`), and browsers throw "Illegal invocation" when it
-      // runs with anything but the global as its receiver. A bound function or an arrow
-      // ignores the thisArg, so this does not clobber a deliberately bound transport.
-      const response = await this.fetchImpl.call(globalThis, url, {
+      // fetchWith, not a plain call: it supplies the global receiver that unbound native fetch
+      // needs, and falls back to globalThis.fetch when no transport was configured.
+      const response = await fetchWith(this.fetchImpl, url, {
         method,
         headers: mergedHeaders,
         body: body != null ? JSON.stringify(body) : undefined,
@@ -1796,20 +1803,28 @@ export class OpenSeaAPI {
    * ```
    *
    * @param apiBaseUrl Optional base URL override (defaults to mainnet).
+   * @param options Optional `fetch` transport. This is a static method with no instance to read
+   *                {@link OpenSeaAPIConfig.fetch} from, so a consumer that routes every request
+   *                through its own transport passes it here. Defaults to the global `fetch`.
    * @returns The {@link RequestInstantApiKeyResponse} containing the new key,
    *          with response keys camelized to match SDK conventions.
    */
   public static async requestInstantApiKey(
     apiBaseUrl: string = API_BASE_MAINNET,
+    options: { fetch?: FetchImpl } = {},
   ): Promise<RequestInstantApiKeyResponse> {
-    const response = await fetch(`${apiBaseUrl}${getInstantApiKeyPath()}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-app-id": "opensea-js",
+    const response = await fetchWith(
+      options.fetch,
+      `${apiBaseUrl}${getInstantApiKeyPath()}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-app-id": "opensea-js",
+        },
+        body: "{}",
       },
-      body: "{}",
-    })
+    )
     if (!response.ok) {
       throw OpenSeaAPI._createApiError(
         response,

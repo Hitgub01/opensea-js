@@ -1,4 +1,5 @@
-import { ZeroAddress, ZeroHash } from "ethers"
+import { generateRandomSalt } from "@opensea/seaport-js/lib/utils/order"
+import { keccak256, toUtf8Bytes, ZeroAddress, ZeroHash } from "ethers"
 import { describe, expect, test, vi } from "vitest"
 import { OrdersManager } from "../../src/sdk/orders"
 import { Chain, OrderSide } from "../../src/types"
@@ -1529,6 +1530,385 @@ describe("SDK: OrdersManager", () => {
         // Should have called postOrder twice before failing
         expect(mockAPI.postOffer.mock.calls.length).toBe(2)
       }
+    })
+  })
+
+  describe("salt forwarding", () => {
+    /**
+     * seaport-js is the thing that turns an absent salt into a random,
+     * domain-tagged one, so the SDK's job is to leave the field absent.
+     * These two assertions pin the dependency behaviour the fix relies on.
+     */
+    describe("the seaport-js contract this relies on", () => {
+      test("a generated salt is random and carries the domain tag", () => {
+        const domain = "api.opensea.io"
+        const tag = keccak256(toUtf8Bytes(domain)).slice(0, 10)
+
+        expect(generateRandomSalt(domain).startsWith(tag)).toBe(true)
+        expect(generateRandomSalt()).not.toBe(generateRandomSalt())
+      })
+    })
+
+    const setupBulkOrders = (count: number) => {
+      const orders = Array.from({ length: count }, (_, i) => ({
+        parameters: { ...mockOrder.parameters, salt: i.toString() },
+        signature: `0xBulkSignature${i}`,
+      }))
+      mockSeaport.createBulkOrders = vi.fn().mockResolvedValue({
+        executeAllActions: vi.fn().mockResolvedValue(orders),
+      })
+    }
+
+    test("createListing leaves an omitted salt undefined so seaport tags it", async () => {
+      await ordersManager.createListing({
+        asset: { tokenAddress: "0xNFTContract", tokenId: "1234" },
+        accountAddress: "0xSeller",
+        amount: "1000000000000000000",
+        domain: "api.opensea.io",
+      })
+
+      const createOrderCall = mockSeaport.createOrder.mock.calls[0][0]
+      expect(createOrderCall.salt).toBeUndefined()
+      expect(createOrderCall.domain).toBe("api.opensea.io")
+    })
+
+    test("createOffer leaves an omitted salt undefined", async () => {
+      await ordersManager.createOffer({
+        asset: { tokenAddress: "0xNFTContract", tokenId: "1234" },
+        accountAddress: "0xBuyer",
+        amount: "1000000000000000000",
+      })
+
+      expect(mockSeaport.createOrder.mock.calls[0][0].salt).toBeUndefined()
+    })
+
+    test("createCollectionOffer leaves an omitted salt undefined", async () => {
+      await ordersManager.createCollectionOffer({
+        collectionSlug: "test-collection",
+        accountAddress: "0xBuyer",
+        amount: "1000000000000000000",
+        quantity: 1,
+      })
+
+      expect(mockSeaport.createOrder.mock.calls[0][0].salt).toBeUndefined()
+    })
+
+    test("createBulkOffers leaves an omitted salt undefined", async () => {
+      setupBulkOrders(2)
+
+      await ordersManager.createBulkOffers({
+        offers: [
+          {
+            asset: { tokenAddress: "0xNFTContract", tokenId: "1234" },
+            amount: "1000000000000000000",
+          },
+          {
+            asset: { tokenAddress: "0xNFTContract", tokenId: "5678" },
+            amount: "2000000000000000000",
+          },
+        ],
+        accountAddress: "0xBuyer",
+      })
+
+      const inputs = mockSeaport.createBulkOrders.mock.calls[0][0]
+      expect(inputs[0].salt).toBeUndefined()
+      expect(inputs[1].salt).toBeUndefined()
+    })
+
+    test.each([
+      ["number", 0],
+      ["string", "0"],
+      ["bigint", 0n],
+    ])("createListing keeps an explicit zero salt (%s)", async (_label, salt) => {
+      await ordersManager.createListing({
+        asset: { tokenAddress: "0xNFTContract", tokenId: "1234" },
+        accountAddress: "0xSeller",
+        amount: "1000000000000000000",
+        salt,
+      })
+
+      expect(mockSeaport.createOrder.mock.calls[0][0].salt).toBe("0")
+    })
+
+    test("createCollectionOffer keeps an explicit zero salt", async () => {
+      await ordersManager.createCollectionOffer({
+        collectionSlug: "test-collection",
+        accountAddress: "0xBuyer",
+        amount: "1000000000000000000",
+        quantity: 1,
+        salt: 0,
+      })
+
+      expect(mockSeaport.createOrder.mock.calls[0][0].salt).toBe("0")
+    })
+
+    test("createBulkListings keeps an explicit zero salt", async () => {
+      setupBulkOrders(2)
+
+      await ordersManager.createBulkListings({
+        listings: [
+          {
+            asset: { tokenAddress: "0xNFTContract", tokenId: "1234" },
+            amount: "1000000000000000000",
+            salt: 0,
+          },
+          {
+            asset: { tokenAddress: "0xNFTContract", tokenId: "5678" },
+            amount: "2000000000000000000",
+            salt: "99",
+          },
+        ],
+        accountAddress: "0xSeller",
+      })
+
+      const inputs = mockSeaport.createBulkOrders.mock.calls[0][0]
+      expect(inputs[0].salt).toBe("0")
+      expect(inputs[1].salt).toBe("99")
+    })
+
+    test("createBulkOffers keeps an explicit zero salt", async () => {
+      setupBulkOrders(2)
+
+      await ordersManager.createBulkOffers({
+        offers: [
+          {
+            asset: { tokenAddress: "0xNFTContract", tokenId: "1234" },
+            amount: "1000000000000000000",
+            salt: 0,
+          },
+          {
+            asset: { tokenAddress: "0xNFTContract", tokenId: "5678" },
+            amount: "2000000000000000000",
+            salt: "99",
+          },
+        ],
+        accountAddress: "0xBuyer",
+      })
+
+      const inputs = mockSeaport.createBulkOrders.mock.calls[0][0]
+      expect(inputs[0].salt).toBe("0")
+      expect(inputs[1].salt).toBe("99")
+    })
+  })
+
+  describe("shared bulk plumbing", () => {
+    const setupBulkOrders = (count: number) => {
+      const orders = Array.from({ length: count }, (_, i) => ({
+        parameters: { ...mockOrder.parameters, salt: i.toString() },
+        signature: `0xBulkSignature${i}`,
+      }))
+      mockSeaport.createBulkOrders = vi.fn().mockResolvedValue({
+        executeAllActions: vi.fn().mockResolvedValue(orders),
+      })
+      return orders
+    }
+
+    const listingsOfLength = (count: number) =>
+      Array.from({ length: count }, (_, i) => ({
+        asset: { tokenAddress: "0xNFTContract", tokenId: i.toString() },
+        amount: `${i + 1}000000000000000000`,
+      }))
+
+    test("prices each listing once rather than once per pass", async () => {
+      setupBulkOrders(3)
+
+      await ordersManager.createBulkListings({
+        listings: listingsOfLength(3),
+        accountAddress: "0xSeller",
+      })
+
+      expect(mockGetPriceParameters).toHaveBeenCalledTimes(3)
+    })
+
+    test("a bad amount throws on the first offending listing, in input order", async () => {
+      setupBulkOrders(3)
+      mockGetPriceParameters.mockImplementation(
+        (_side: OrderSide, _token: string, amount: string) => {
+          if (amount.startsWith("bad")) {
+            return Promise.reject(new Error(`unpriceable: ${amount}`))
+          }
+          return Promise.resolve({ basePrice: BigInt("1000000000000000000") })
+        },
+      )
+
+      await expect(
+        ordersManager.createBulkListings({
+          listings: [
+            {
+              asset: { tokenAddress: "0xNFTContract", tokenId: "0" },
+              amount: "1000000000000000000",
+            },
+            {
+              asset: { tokenAddress: "0xNFTContract", tokenId: "1" },
+              amount: "bad-at-index-1",
+            },
+            {
+              asset: { tokenAddress: "0xNFTContract", tokenId: "2" },
+              amount: "bad-at-index-2",
+            },
+          ],
+          accountAddress: "0xSeller",
+        }),
+      ).rejects.toThrow("unpriceable: bad-at-index-1")
+
+      // Index 2 is never reached, so the error cannot come from a race between
+      // the two bad listings.
+      expect(mockGetPriceParameters).toHaveBeenCalledTimes(2)
+      expect(mockSeaport.createBulkOrders).not.toHaveBeenCalled()
+    })
+
+    test("a private bulk listing still gets its buyer consideration", async () => {
+      setupBulkOrders(2)
+
+      await ordersManager.createBulkListings({
+        listings: [
+          {
+            asset: { tokenAddress: "0xNFTContract", tokenId: "1" },
+            amount: "1000000000000000000",
+            buyerAddress: "0xBuyer1",
+          },
+          {
+            asset: { tokenAddress: "0xNFTContract", tokenId: "2" },
+            amount: "2000000000000000000",
+          },
+        ],
+        accountAddress: "0xSeller",
+      })
+
+      const inputs = mockSeaport.createBulkOrders.mock.calls[0][0]
+      expect(
+        inputs[0].consideration.some(
+          (item: { recipient?: string }) => item.recipient === "0xBuyer1",
+        ),
+      ).toBe(true)
+      expect(
+        inputs[1].consideration.some(
+          (item: { recipient?: string }) => item.recipient === "0xBuyer1",
+        ),
+      ).toBe(false)
+    })
+
+    test("listings and offers report submission identically apart from the noun", async () => {
+      const logger = vi.fn()
+      const manager = new OrdersManager(
+        createMockContext({
+          chain: Chain.Mainnet,
+          api: mockAPI,
+          seaport: mockSeaport,
+          logger,
+          requireAccountIsAvailable: mockRequireAccountIsAvailable,
+        }),
+        mockGetPriceParameters,
+      )
+
+      setupBulkOrders(2)
+      await manager.createBulkListings({
+        listings: listingsOfLength(2),
+        accountAddress: "0xSeller",
+      })
+      const listingLines = logger.mock.calls.map(call => call[0])
+
+      logger.mockClear()
+      setupBulkOrders(2)
+      await manager.createBulkOffers({
+        offers: listingsOfLength(2),
+        accountAddress: "0xBuyer",
+      })
+      const offerLines = logger.mock.calls.map(call => call[0])
+
+      expect(listingLines).toEqual([
+        "Starting submission of 2 bulk-signed listings to OpenSea API...",
+        "Submitting listing 1/2...",
+        "Completed listing 1/2",
+        "Submitting listing 2/2...",
+        "Completed listing 2/2",
+        "Successfully submitted 2/2 listings",
+      ])
+      expect(
+        offerLines.map(line => line.replaceAll("offer", "listing")),
+      ).toEqual(listingLines)
+    })
+
+    test("a failed submission is reported the same way on both sides", async () => {
+      const logger = vi.fn()
+      const manager = new OrdersManager(
+        createMockContext({
+          chain: Chain.Mainnet,
+          api: mockAPI,
+          seaport: mockSeaport,
+          logger,
+          requireAccountIsAvailable: mockRequireAccountIsAvailable,
+        }),
+        mockGetPriceParameters,
+      )
+
+      setupBulkOrders(2)
+      mockAPI.postListing.mockRejectedValueOnce(new Error("rate limited"))
+      const listingResult = await manager.createBulkListings({
+        listings: listingsOfLength(2),
+        accountAddress: "0xSeller",
+        continueOnError: true,
+      })
+      const listingLines = logger.mock.calls.map(call => call[0])
+
+      logger.mockClear()
+      setupBulkOrders(2)
+      mockAPI.postOffer.mockRejectedValueOnce(new Error("rate limited"))
+      const offerResult = await manager.createBulkOffers({
+        offers: listingsOfLength(2),
+        accountAddress: "0xBuyer",
+        continueOnError: true,
+      })
+      const offerLines = logger.mock.calls.map(call => call[0])
+
+      expect(listingResult.failed.map(failure => failure.index)).toEqual([0])
+      expect(offerResult.failed.map(failure => failure.index)).toEqual([0])
+      expect(listingResult.successful).toHaveLength(1)
+      expect(offerResult.successful).toHaveLength(1)
+      expect(listingLines).toEqual([
+        "Starting submission of 2 bulk-signed listings to OpenSea API...",
+        "Submitting listing 1/2...",
+        "Failed listing 1/2: rate limited",
+        "Submitting listing 2/2...",
+        "Completed listing 2/2",
+        "Successfully submitted 1/2 listing",
+        "Failed to submit 1/2 listing",
+      ])
+      expect(
+        offerLines.map(line => line.replaceAll("offer", "listing")),
+      ).toEqual(listingLines)
+    })
+
+    test.each([
+      ["listing", "0xSeller"],
+      ["offer", "0xBuyer"],
+    ])("a single %s reports a creation failure at index 0 under continueOnError", async (kind, accountAddress) => {
+      mockRequireAccountIsAvailable.mockRejectedValue(
+        new Error("Account not available"),
+      )
+
+      const single = {
+        asset: { tokenAddress: "0xNFTContract", tokenId: "1" },
+        amount: "1000000000000000000",
+      }
+      const result =
+        kind === "listing"
+          ? await ordersManager.createBulkListings({
+              listings: [single],
+              accountAddress,
+              continueOnError: true,
+            })
+          : await ordersManager.createBulkOffers({
+              offers: [single],
+              accountAddress,
+              continueOnError: true,
+            })
+
+      expect(result.successful).toHaveLength(0)
+      expect(result.failed).toHaveLength(1)
+      expect(result.failed[0].index).toBe(0)
+      expect(result.failed[0].order).toEqual({})
+      expect(result.failed[0].error.message).toBe("Account not available")
     })
   })
 

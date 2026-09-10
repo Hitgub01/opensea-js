@@ -1,5 +1,47 @@
 # @opensea/sdk
 
+## 12.6.0
+
+### Minor Changes
+
+- 12f1376: Add `tryDecodeJwtPayload(token)`, the non-throwing form of `decodeJwtPayload`, which returns `null` for a token that is not a readable JWT. `extractLinkedWallets` and `extractOpenSeaScopes` now use it internally; their behavior is unchanged.
+
+  It also gives callers a way to tell an unreadable token apart from one carrying no claims. Both extractors return `[]` for either case, so a caller holding an opaque or corrupted token would otherwise read "no linked wallets" and silently under-report a portfolio. Check `tryDecodeJwtPayload(token) === null` before treating an empty result as complete.
+
+- 3271b5b: Extend the `fetch` transport seam to the rest of the SDK's HTTP. `OpenSeaAuthConfig`, `OpenSeaOAuthConfig` and `LinkWalletWithSiwxOptions` each take an optional `fetch`, and `requestSiwxNonce` and the static `OpenSeaAPI.requestInstantApiKey` take one as an options argument. All default to the global `fetch`, so nothing changes for existing callers.
+
+  `OpenSeaAPIConfig.fetch` covered the API client only, which left a consumer routing every request through a cache, a rate limiter or instrumentation with the login flow and the instant-key request still going straight to the global `fetch`. One transport now covers both, and a test can assert on the requests the auth flow builds without reassigning `globalThis.fetch`.
+
+  The transport type is exported as `FetchImpl`, matching `@opensea/wallet-adapters`. Every call site invokes it with `globalThis` as the receiver, so passing native fetch unbound (`fetch: globalThis.fetch`) works in browsers; a transport the caller bound deliberately keeps its own receiver. Browsers accept a `null` or `undefined` receiver for native fetch and reject any other object with "Illegal invocation", so the explicit `globalThis` is what stops that from depending on how each call site is written.
+
+  A transport installed on the auth helpers sees session cookies, scoped tokens, PKCE verifiers and exchanged JWTs. Treat anything it logs or caches as a credential, and note that none of those responses is cacheable: every one mints, exchanges or revokes a token.
+
+- 77206d0: Export `Camelize`, `Snakeize`, `camelizeKeysDeep` and `snakeizeKeysDeep` from the package root, and document the response-casing contract in the README under "Response casing".
+
+  The SDK rewrites response keys to camelCase, while `@opensea/api-types` describes the snake_case wire. Both are correct on their own, and pairing them is the mistake: a raw wire type used to annotate an SDK return value describes renamed fields that do not exist at runtime. TypeScript rejects that pairing only where the wire type has a required snake_case key somewhere in its tree, so plenty of shapes compile and then hand the reader a value whose renamed fields are all `undefined`. Single-word keys such as `address` have no underscore to rewrite, so they survive and the value looks partly right. One client concluded the API had switched to camelCase and filed it as an API bug.
+
+  `Camelize<T>` was already the return type of every fetcher method but was not exported, so a response with no dedicated alias in this package had no camelized type a caller could write down, and the raw one was the only thing to reach for. `Camelize<SomeWireType>` is now that type.
+
+### Patch Changes
+
+- 71e1597: Fix the salt on single orders. `createListing`, `createOffer`, `createCollectionOffer` and the two `*AndValidateOnchain` wrappers passed `BigInt(salt ?? 0).toString()` to seaport-js, so an omitted salt became the literal string `"0"`.
+
+  seaport-js only generates a salt when the field is `undefined`, and that generated salt carries the domain tag in its first four bytes (`generateRandomSalt(domain)` in `lib/utils/order`). A defined `"0"` suppressed both, which had two consequences. The `domain` argument was inert on every one of those methods, since salt generation is the only place seaport-js reads it during order creation, so onchain attribution never reached the order. And salt is part of the EIP-712 `OrderComponents` hash, so two orders that agreed on every other field, including an explicitly supplied `listingTime` and `expirationTime`, produced the same order hash. Seaport keeps cancellation and fill state per order hash, so re-creating such an order after a cancel or a fill produced an order that could not be filled.
+
+  These methods now leave an omitted salt undefined and let seaport-js generate it, which is what their documentation already claimed. An explicit salt is still honored unchanged.
+
+  `createBulkListings` and `createBulkOffers` already left an omitted salt undefined and are unaffected there, but they tested the salt for truthiness, so an explicit salt of `0` or `0n` was silently replaced with a random one. Both paths now share one helper that keys on `undefined`, so an explicit zero survives as `"0"` everywhere.
+
+  Orders you create without passing `salt` will now have a random salt rather than `0`. Nothing in the SDK derives an order hash ahead of time, so this only affects callers who relied on that value being predictable.
+
+- 8ea9187: `decodeJwtPayload` now rejects a JWT whose payload decodes to something other than an object. `JSON.parse` returns numbers, strings, booleans, arrays and `null` happily, and the function asserted those to `Record<string, unknown>`, so the mistake only surfaced as `undefined` at the claim read.
+
+  This makes `tryDecodeJwtPayload(token) === null` the complete "unreadable token" signal that `extractLinkedWallets` documents. Previously such a token read as decodable and every claim came back empty, which is the silent under-report that guidance exists to prevent.
+
+- Updated dependencies [3a2ff37]
+- Updated dependencies [77206d0]
+  - @opensea/api-types@0.11.0
+
 ## 12.5.0
 
 ### Minor Changes

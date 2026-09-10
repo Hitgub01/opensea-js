@@ -3,6 +3,7 @@ import type {
   OperationResponse,
 } from "@opensea/api-types"
 import { getAddress } from "ethers"
+import { type FetchImpl, fetchWith } from "../utils/fetchTransport"
 import type { AuthSigner } from "./types"
 
 const DEFAULT_API_BASE_URL = "https://api.opensea.io"
@@ -55,6 +56,14 @@ export interface LinkWalletWithSiwxOptions
   authToken: string
   chainArch: ChainArch
   chainId: number
+  /**
+   * Transport used for the nonce request and the link request, defaulting to the global `fetch`.
+   * Same seam as {@link OpenSeaAPIConfig.fetch}.
+   *
+   * It sees the auth token, the API key and the wallet signature, so anything it logs or caches
+   * is sensitive.
+   */
+  fetch?: FetchImpl
 }
 
 const DOMAIN_REGEX =
@@ -253,11 +262,18 @@ export function parseSiwxMessage(message: string): ParseSiwxMessageResult {
 
 /**
  * Request a single-use nonce from the OpenSea API.
+ *
+ * @param apiBaseUrl Base URL to request the nonce from. Defaults to mainnet.
+ * @param options Optional `fetch` transport, defaulting to the global `fetch`. Same seam as
+ *                {@link OpenSeaAPIConfig.fetch}, for a caller routing every request through
+ *                its own transport.
  */
 export async function requestSiwxNonce(
   apiBaseUrl = DEFAULT_API_BASE_URL,
+  options: { fetch?: FetchImpl } = {},
 ): Promise<string> {
-  const response = await fetch(
+  const response = await fetchWith(
+    options.fetch,
     `${stripTrailingSlash(apiBaseUrl)}/api/v2/auth/siwe/nonce`,
     {
       method: "POST",
@@ -290,7 +306,7 @@ export async function linkWalletWithSiwx(
   const apiBaseUrl = stripTrailingSlash(
     options.apiBaseUrl ?? DEFAULT_API_BASE_URL,
   )
-  const nonce = await requestSiwxNonce(apiBaseUrl)
+  const nonce = await requestSiwxNonce(apiBaseUrl, { fetch: options.fetch })
   const address = await signer.getAddress()
   const message = createSiwxMessage({
     address,
@@ -315,15 +331,19 @@ export async function linkWalletWithSiwx(
     chainArch: options.chainArch,
   }
 
-  const response = await fetch(`${apiBaseUrl}/api/v2/accounts/wallets/siwx`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${options.authToken}`,
-      "Content-Type": "application/json",
-      ...(options.apiKey ? { "X-API-KEY": options.apiKey } : {}),
+  const response = await fetchWith(
+    options.fetch,
+    `${apiBaseUrl}/api/v2/accounts/wallets/siwx`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${options.authToken}`,
+        "Content-Type": "application/json",
+        ...(options.apiKey ? { "X-API-KEY": options.apiKey } : {}),
+      },
+      body: JSON.stringify(payload),
     },
-    body: JSON.stringify(payload),
-  })
+  )
   if (!response.ok) {
     const body = await response.text().catch(() => "")
     throw new Error(

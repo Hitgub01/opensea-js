@@ -12,6 +12,9 @@ import type {
 import type { Listing, Offer } from "./api/types"
 import type { OrderV2 } from "./orders/types"
 import type { Camelize } from "./utils/case"
+import type { FetchImpl } from "./utils/fetchTransport"
+
+export type { FetchImpl } from "./utils/fetchTransport"
 
 /**
  * Numeric type for amounts (replaces ethers BigNumberish).
@@ -139,8 +142,8 @@ export interface OpenSeaAPIConfig {
    *
    * It receives the fully built URL and init, including the API key and auth headers, so treat
    * anything it logs or caches as sensitive. It is called for the instance's own requests; the
-   * static `OpenSeaAPI.requestInstantApiKey` has no instance to read it from and always uses the
-   * global `fetch`.
+   * static `OpenSeaAPI.requestInstantApiKey` has no instance to read it from and takes its own
+   * transport as an argument.
    *
    * A cache built on this must key on the credentials as well as the URL, and must not cache
    * anything but GET. Two callers with different API keys or auth tokens can see different
@@ -167,7 +170,7 @@ export interface OpenSeaAPIConfig {
    * })
    * ```
    */
-  fetch?: typeof globalThis.fetch
+  fetch?: FetchImpl
 }
 
 /**
@@ -388,6 +391,9 @@ export interface RequestOptions {
    * The return type stays the camelized view, so the caller is responsible for
    * passing a `T` whose keys already match the wire shape. `GetTraitsResponse`
    * qualifies because `Camelize<T>` passes index signatures through unchanged.
+   * Setting this to `false` with a `T` that has snake_case keys makes the
+   * declared type wrong: it will claim camelCase properties the response does
+   * not have. The flag does not narrow the return type, so nothing catches it.
    */
   camelizeResponse?: boolean
 }

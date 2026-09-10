@@ -55,6 +55,59 @@ The older flat methods (`sdk.api.getCollection(slug)`) still work, carry `@depre
 their replacements, and are removed in the next major. See the
 [API reference](developerDocs/api-reference.md#calling-the-api) for the four whose names change.
 
+## Response casing
+
+The API speaks snake_case. The SDK rewrites response keys to camelCase before handing them back,
+and rewrites camelCase request bodies and query params to snake_case on the way out. So
+`collection.bannerImageUrl` is what you read, and `banner_image_url` is what crosses the wire.
+
+`@opensea/api-types` describes the wire, so its types stay snake_case. Do not annotate a value an
+SDK method returned with one of them:
+
+```typescript
+import type { AccountResolveResponse } from "@opensea/api-types";
+
+// Wrong. This compiles, and every snake_case field reads undefined at runtime.
+const account: AccountResolveResponse = await sdk.api.accounts.resolveAccount("vitalik.eth");
+console.log(account.ens_name); // undefined; the runtime key is `ensName`
+```
+
+TypeScript rejects that pairing only when the wire type has a required snake_case key somewhere in
+its tree. Of the 166 schemas in the spec that declare snake_case properties directly, 15 take the
+camelized value with no error, `AccountResolveResponse` among them: its one required property,
+`address`, has no underscore to rewrite, so nothing is missing and the camelCase keys are allowed
+through as extras.
+
+Two spellings work. Use the SDK's own response type, which is already camelized:
+
+```typescript
+import type { ResolveAccountResponse } from "@opensea/sdk";
+
+const account: ResolveAccountResponse = await sdk.api.accounts.resolveAccount("vitalik.eth");
+console.log(account.ensName);
+```
+
+Or wrap the wire type in `Camelize`, for a response with no dedicated alias in this package:
+
+```typescript
+import type { AccountResolveResponse } from "@opensea/api-types";
+import type { Camelize } from "@opensea/sdk";
+
+const account: Camelize<AccountResolveResponse> = await sdk.api.accounts.resolveAccount("vitalik.eth");
+```
+
+`camelizeResponse: false` turns the rewrite off for one call. Use it where the response keys are
+data rather than field names: `getTraits` is keyed by collection-authored trait names, so the
+rewrite would report a `dark_brown` trait as `darkBrown` and merge two traits that differ only in
+casing.
+
+The option does not change the declared return type, which stays `Camelize<T>` whether the rewrite
+ran or not. That is sound only where `Camelize<T>` and `T` are the same type, so pass a `T` whose
+keys already survive the rewrite unchanged. `GetTraitsResponse` qualifies because `Camelize<T>`
+passes index signatures through untouched. Pass a `T` with snake_case keys and the declared type
+claims camelCase properties the response does not have, which is the same trap this section is
+about, arriving from the other direction.
+
 ## Quick Start
 
 ### With ethers.js

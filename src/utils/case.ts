@@ -136,6 +136,28 @@ type SnakeToCamel<S extends string> = S extends `${infer Head}_${infer Tail}`
  *
  * SDK consumers see camelCase types even though api-types ships snake_case —
  * the runtime {@link camelizeKeysDeep} keeps shapes in sync.
+ *
+ * Reach for this when a response has no dedicated camelized alias in this
+ * package: `Camelize<SomeWireType>` is the shape an SDK method returns, and
+ * the raw `@opensea/api-types` type is not. Annotating an SDK return value
+ * with the raw type leaves every renamed field `undefined` at runtime, while
+ * single-word keys such as `address` survive and still read correctly, and the
+ * compiler only catches it when the wire type has a required snake_case key
+ * somewhere in its tree.
+ *
+ * @example
+ * ```ts
+ * import type { AccountResolveResponse } from "@opensea/api-types"
+ * import type { Camelize } from "@opensea/sdk"
+ *
+ * // Wrong: compiles, and `ens_name` is undefined at runtime.
+ * const bad: AccountResolveResponse =
+ *   await sdk.api.accounts.resolveAccount("vitalik.eth")
+ *
+ * // Right.
+ * const good: Camelize<AccountResolveResponse> =
+ *   await sdk.api.accounts.resolveAccount("vitalik.eth")
+ * ```
  */
 export type Camelize<T> = T extends Date
   ? T
