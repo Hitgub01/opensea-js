@@ -19,6 +19,7 @@ import type {
   AssetWithTokenStandard,
   Chain,
   EventData,
+  FetchImpl,
 } from "../types"
 import { EventType, OrderSide } from "../types"
 import { checksumAddress } from "../utils/address"
@@ -120,11 +121,17 @@ export class BaseOpenSeaSDK {
    * ```
    *
    * @param apiBaseUrl Optional base URL override (defaults to mainnet).
+   * @param options Optional `fetch` transport, forwarded to
+   *                {@link OpenSeaAPI.requestInstantApiKey}. This is a static method with no
+   *                instance whose configured transport it could read, so a consumer that routes
+   *                every request through its own transport passes it here. Defaults to the
+   *                global `fetch`.
    */
   public static async requestInstantApiKey(
     apiBaseUrl?: string,
+    options: { fetch?: FetchImpl } = {},
   ): Promise<RequestInstantApiKeyResponse> {
-    return OpenSeaAPI.requestInstantApiKey(apiBaseUrl)
+    return OpenSeaAPI.requestInstantApiKey(apiBaseUrl, options)
   }
 
   // ─── Event Listeners ───────────────────────────────────────────────

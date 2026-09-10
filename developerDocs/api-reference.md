@@ -167,8 +167,23 @@ console.log(`Account owns ${nfts.length} NFTs`);
 | `limit`   | number | No       | Number of NFTs to retrieve (1-50)      |
 | `next`    | string | No       | Pagination cursor                      |
 | `chain`   | Chain  | No       | The blockchain (defaults to SDK chain) |
+| `options` | object | No       | Non-pagination filters (see below)     |
 
 **Returns:** `ListNFTsResponse` with NFTs owned by the account.
+
+`options.includeAutoHidden` also returns NFTs that were hidden automatically because a third party minted or sent them to this account, which is how airdropped and unsolicited items are kept out of the default response. It goes on the wire as `include_auto_hidden` and is left off entirely when unset.
+
+It changes only the automatic hiding. NFTs the account holder hid themselves are still not returned, and NFTs removed for policy violations are not surfaced by it.
+
+```typescript
+const { nfts: withAirdrops } = await openseaSDK.api.nfts.getNFTsByAccount(
+  "0xfBa662e1a8e91a350702cF3b87D0C2d2Fb4BA57F",
+  50,
+  undefined,
+  Chain.Mainnet,
+  { includeAutoHidden: true },
+);
+```
 
 ---
 

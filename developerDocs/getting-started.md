@@ -39,7 +39,7 @@ const { nft } = await openseaSDK.api.nfts.getNFT(tokenAddress, tokenId);
 
 - `getNFTsByCollection(collectionSlug, limit?, next?, traits?)` - Get all NFTs in a collection (`traits` is an array of `{ traitType, value }` for server-side filtering — multiple entries are AND-combined)
 - `getNFTsByContract(contractAddress, limit?, next?, chain?)` - Get all NFTs for a contract
-- `getNFTsByAccount(accountAddress, limit?, next?, chain?)` - Get all NFTs owned by an account
+- `getNFTsByAccount(accountAddress, limit?, next?, chain?, options?)` - Get all NFTs owned by an account (`options.includeAutoHidden` also returns NFTs auto-hidden because a third party minted or sent them; NFTs the holder hid themselves are still excluded)
 - `getContract(contractAddress, chain?)` - Get contract information
 
 ### Checking Balances and Ownerships

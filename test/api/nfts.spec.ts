@@ -312,6 +312,51 @@ describe("API: NFTsAPI", () => {
       expect(result.nfts).toHaveLength(2)
     })
 
+    test("passes includeAutoHidden through when the caller sets it", async () => {
+      const mockResponse = {
+        nfts: [],
+        next: undefined,
+      } as unknown as ListNFTsResponse
+
+      mockGet.mockResolvedValue(mockResponse)
+
+      await nftsAPI.getNFTsByAccount(
+        "0xowner123",
+        undefined,
+        undefined,
+        Chain.Mainnet,
+        { includeAutoHidden: true },
+      )
+
+      expect(mockGet.mock.calls[0][1]).toEqual({
+        limit: undefined,
+        next: undefined,
+        includeAutoHidden: true,
+      })
+    })
+
+    test("keeps pagination working alongside includeAutoHidden", async () => {
+      const mockResponse = {
+        nfts: [],
+        next: undefined,
+      } as unknown as ListNFTsResponse
+
+      mockGet.mockResolvedValue(mockResponse)
+
+      await nftsAPI.getNFTsByAccount("0xowner123", 30, "cursor-3", Chain.Base, {
+        includeAutoHidden: true,
+      })
+
+      expect(mockGet.mock.calls[0][0]).toBe(
+        `/api/v2/chain/${Chain.Base}/account/0xowner123/nfts`,
+      )
+      expect(mockGet.mock.calls[0][1]).toEqual({
+        limit: 30,
+        next: "cursor-3",
+        includeAutoHidden: true,
+      })
+    })
+
     test("fetches NFTs with limit parameter", async () => {
       const mockResponse = {
         nfts: [],

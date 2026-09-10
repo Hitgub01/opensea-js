@@ -49,6 +49,7 @@ import type {
   NftListResponse,
   NftResponse,
   OffersResponse,
+  paths,
   TokenAccountActivityPaginatedResponse,
   TokenBalancePaginatedResponse,
   TokenBalanceResponse,
@@ -833,7 +834,26 @@ export interface GetTokensArgs {
   next?: string
   /** Filter to these chains */
   chains?: ChainIdentifier[]
+  /**
+   * Field to rank by. Defaults to one-day volume on `getTopTokens` and to the trending score on
+   * `getTrendingTokens`, which is what each endpoint returned before sorting was exposed.
+   */
+  sortBy?: TokenRankingSortBy
+  /** Sort direction. Defaults to descending. */
+  sortDirection?: "asc" | "desc"
 }
+
+/**
+ * Sort keys the token ranking endpoints accept.
+ *
+ * Derived from the spec rather than written out, so a key added or removed upstream reaches this
+ * union in the same regeneration instead of drifting until someone notices.
+ */
+export type TokenRankingSortBy = NonNullable<
+  NonNullable<
+    paths["/api/v2/tokens/trending"]["get"]["parameters"]["query"]
+  >["sort_by"]
+>
 
 /**
  * Query args for Get Swap Quote endpoint.
@@ -1437,6 +1457,29 @@ export interface TokenLiquidityPoolsArgs {
 export interface NFTOwnersArgs {
   limit?: number
   next?: string
+}
+
+/**
+ * Non-pagination options for the NFTs-by-account endpoint.
+ *
+ * Pagination and chain stay positional on `getNFTsByAccount`; this carries
+ * the filters the endpoint has gained since, so later ones can be added
+ * without another positional argument.
+ *
+ * @category API Query Args
+ */
+export interface GetNFTsByAccountOptions {
+  /**
+   * Include NFTs that were hidden automatically because a third party minted
+   * or sent them to this account. Serialized as `include_auto_hidden`, and
+   * omitted from the request when unset, which leaves the server default of
+   * `false` in place.
+   *
+   * This covers only the automatic hiding. NFTs the account holder hid
+   * themselves are still not returned, and NFTs removed for policy violations
+   * are not surfaced by it either.
+   */
+  includeAutoHidden?: boolean
 }
 
 /**

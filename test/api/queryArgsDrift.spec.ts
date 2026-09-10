@@ -3,9 +3,11 @@ import { OpenSeaAPI } from "../../src/api/api"
 import type {
   GetAccountTokensArgs,
   GetEventsArgs,
+  GetNFTsByAccountOptions,
   GetTokensArgs,
   PortfolioArgs,
 } from "../../src/api/types"
+import { Chain } from "../../src/types"
 import { readOpenApiSpec } from "../utils/openapiSpec"
 
 /**
@@ -28,6 +30,12 @@ const INTENTIONALLY_OMITTED: Record<string, Record<string, string>> = {
     // Forwarded from the deprecated `next` by `withCursor`, and exposed as `cursor`.
     cursor: "exposed as `cursor`",
   },
+  GetNFTsByAccountOptions: {
+    limit: "positional argument 2 of getNFTsByAccount",
+    next: "positional argument 3 of getNFTsByAccount",
+    // A real gap rather than a decision: nothing in the SDK sends it yet.
+    collection: "not exposed by the SDK",
+  },
 }
 
 /**
@@ -48,7 +56,14 @@ type CoversExactly<Args, Fields extends readonly (keyof Args)[]> = [
       missing: Exclude<keyof Args, Fields[number]>
     }
 
-const GET_TOKENS_FIELDS = ["limit", "cursor", "next", "chains"] as const
+const GET_TOKENS_FIELDS = [
+  "limit",
+  "cursor",
+  "next",
+  "chains",
+  "sortBy",
+  "sortDirection",
+] as const
 const GET_ACCOUNT_TOKENS_FIELDS = [
   "limit",
   "chains",
@@ -66,6 +81,9 @@ const GET_EVENTS_FIELDS = [
   "next",
   "chain",
 ] as const
+// Only the non-pagination filters; the endpoint's other query parameters are
+// recorded in INTENTIONALLY_OMITTED above.
+const GET_NFTS_BY_ACCOUNT_FIELDS = ["includeAutoHidden"] as const
 
 // Each of these fails to compile if its interface and its list disagree either way.
 const _getTokensCovers: CoversExactly<GetTokensArgs, typeof GET_TOKENS_FIELDS> =
@@ -78,6 +96,10 @@ const _portfolioCovers: CoversExactly<PortfolioArgs, typeof PORTFOLIO_FIELDS> =
   PORTFOLIO_FIELDS
 const _getEventsCovers: CoversExactly<GetEventsArgs, typeof GET_EVENTS_FIELDS> =
   GET_EVENTS_FIELDS
+const _getNFTsByAccountCovers: CoversExactly<
+  GetNFTsByAccountOptions,
+  typeof GET_NFTS_BY_ACCOUNT_FIELDS
+> = GET_NFTS_BY_ACCOUNT_FIELDS
 
 const ARGS_TO_OPERATION: Record<
   string,
@@ -102,6 +124,11 @@ const ARGS_TO_OPERATION: Record<
     path: "/api/v2/events",
     method: "get",
     fields: GET_EVENTS_FIELDS,
+  },
+  GetNFTsByAccountOptions: {
+    path: "/api/v2/chain/{chain}/account/{address}/nfts",
+    method: "get",
+    fields: GET_NFTS_BY_ACCOUNT_FIELDS,
   },
 }
 
@@ -212,11 +239,86 @@ describe("query arg serialization", () => {
     expect(url.searchParams.getAll("chains")).toEqual(["ethereum", "solana"])
   })
 
+  it.each([
+    {
+      endpoint: "getTopTokens",
+      call: (api: OpenSeaAPI) =>
+        api.getTopTokens({ sortBy: "market_cap", sortDirection: "asc" }),
+      sortBy: "market_cap",
+      sortDirection: "asc",
+    },
+    {
+      endpoint: "getTrendingTokens",
+      call: (api: OpenSeaAPI) =>
+        api.getTrendingTokens({ sortBy: "price", sortDirection: "desc" }),
+      sortBy: "price",
+      sortDirection: "desc",
+    },
+  ])("$endpoint sends the ranking sort as snake_case", async ({
+    call,
+    sortBy,
+    sortDirection,
+  }) => {
+    const url = await urlFor(call)
+
+    // Pinned per endpoint rather than matched against a set, so the two
+    // cannot pass by serializing each other's values.
+    expect(url.searchParams.get("sort_by")).toBe(sortBy)
+    expect(url.searchParams.get("sort_direction")).toBe(sortDirection)
+    // The camelCase spellings would be undocumented parameters on the wire.
+    expect(url.searchParams.has("sortBy")).toBe(false)
+    expect(url.searchParams.has("sortDirection")).toBe(false)
+  })
+
+  it("omits the ranking sort when the caller does not set one", async () => {
+    // Each endpoint keeps its own server-side default, so sending nothing is
+    // what preserves the behavior callers had before sorting was exposed.
+    const url = await urlFor(api => api.getTopTokens({ limit: 5 }))
+
+    expect(url.searchParams.has("sort_by")).toBe(false)
+    expect(url.searchParams.has("sort_direction")).toBe(false)
+  })
+
   it("sends the forwarded cursor, never the deprecated next", async () => {
     const url = await urlFor(api => api.getTrendingTokens({ next: "page-2" }))
 
     expect(url.searchParams.get("cursor")).toBe("page-2")
     expect(url.searchParams.has("next")).toBe(false)
+  })
+
+  it("sends includeAutoHidden as include_auto_hidden=true", async () => {
+    const url = await urlFor(api =>
+      api.nfts.getNFTsByAccount("0xabc", undefined, undefined, Chain.Mainnet, {
+        includeAutoHidden: true,
+      }),
+    )
+
+    expect(url.searchParams.get("include_auto_hidden")).toBe("true")
+    // The camelCase spelling would be an undocumented parameter on the wire,
+    // which the server accepts and ignores.
+    expect(url.searchParams.has("includeAutoHidden")).toBe(false)
+  })
+
+  it("sends include_auto_hidden=false when the caller asks for false", async () => {
+    // Pinned separately from the true case so a serializer that coerced every
+    // set value to "true" could not pass both.
+    const url = await urlFor(api =>
+      api.nfts.getNFTsByAccount("0xabc", undefined, undefined, Chain.Mainnet, {
+        includeAutoHidden: false,
+      }),
+    )
+
+    expect(url.searchParams.get("include_auto_hidden")).toBe("false")
+  })
+
+  it("omits include_auto_hidden when the caller does not set it", async () => {
+    const url = await urlFor(api => api.nfts.getNFTsByAccount("0xabc", 5))
+
+    expect(url.searchParams.get("include_auto_hidden")).toBeNull()
+    expect(url.searchParams.has("includeAutoHidden")).toBe(false)
+    // The rest of the query still goes out, so an empty query string is not
+    // what makes the assertion above pass.
+    expect(url.searchParams.get("limit")).toBe("5")
   })
 
   it("omits the chain the events feed ignores", async () => {

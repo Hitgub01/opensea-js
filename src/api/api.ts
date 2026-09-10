@@ -88,6 +88,7 @@ import {
   type GetListingsResponse,
   type GetNFTMetadataResponse,
   type GetNFTResponse,
+  type GetNFTsByAccountOptions,
   type GetOffersResponse,
   type GetOrderByHashResponse,
   type GetSwapQuoteArgs,
@@ -609,6 +610,7 @@ export class OpenSeaAPI {
    * @param limit The number of NFTs to retrieve. Must be greater than 0 and less than 51.
    * @param next Cursor to retrieve the next page of NFTs
    * @param chain The chain to query. Defaults to the chain set in the constructor.
+   * @param options Non-pagination filters, currently `includeAutoHidden`.
    * @returns The {@link ListNFTsResponse} returned by the API.
    * @deprecated Use `api.nfts.getNFTsByAccount()`. Removed in the next major.
    */
@@ -617,8 +619,9 @@ export class OpenSeaAPI {
     limit: number | undefined = undefined,
     next: string | undefined = undefined,
     chain = this.chain,
+    options?: GetNFTsByAccountOptions,
   ): Promise<ListNFTsResponse> {
-    return this.nfts.getNFTsByAccount(address, limit, next, chain)
+    return this.nfts.getNFTsByAccount(address, limit, next, chain, options)
   }
 
   /**

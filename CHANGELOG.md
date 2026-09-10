@@ -1,5 +1,45 @@
 # @opensea/sdk
 
+## 12.7.0
+
+### Minor Changes
+
+- 13db5ef: Expose `include_auto_hidden` on the NFTs-by-account endpoint.
+
+  `GET /api/v2/chain/{chain}/account/{address}/nfts` leaves out NFTs the system hid on its own, which is how airdropped and unsolicited items stay out of a wallet's default view. The spec documents `include_auto_hidden` for callers that want them back, and until now neither package could send it.
+
+  In the SDK, `nfts.getNFTsByAccount` takes a trailing options object: `getNFTsByAccount(address, limit?, next?, chain?, { includeAutoHidden })`. The four positional arguments are unchanged, so existing calls compile and behave as before, and the next filter this endpoint gains goes in the same object instead of becoming a sixth positional argument. The fetcher rewrites the key to `include_auto_hidden`, and a caller who sets nothing sends nothing, which leaves the server default of false in place. The deprecated `api.getNFTsByAccount` passthrough forwards the options too.
+
+  In the CLI, `opensea nfts list-by-account` gains `--include-auto-hidden`, and the programmatic `nfts.listByAccount` gains a matching `includeAutoHidden` option.
+
+  The flag moves only the automatic hiding. NFTs the account holder hid themselves are still not returned, and it does not surface NFTs removed for policy violations.
+
+- e1f390c: Sync the OpenAPI spec and expose the token ranking sort.
+
+  `GET /api/v2/tokens/top` and `GET /api/v2/tokens/trending` now document `sort_by` and `sort_direction`, so `GetTokensArgs` gains `sortBy` and `sortDirection`. Both endpoints previously hardcoded their ordering, one-day volume for top and the trending score for trending, and those remain the defaults when a caller sends neither, so nothing changes for existing callers.
+
+  `sortBy` is typed as `TokenRankingSortBy`, derived from the spec rather than written out, so a key added or removed upstream reaches the union in the same regeneration instead of drifting.
+
+  The sync also documents `include_auto_hidden` on `GET /api/v2/chain/{chain}/account/{address}/nfts`, which includes NFTs hidden automatically because a third party minted or sent them. The SDK and CLI expose it in this same release, so see that entry for the shape.
+
+### Patch Changes
+
+- a2e2cfa: Re-sync the spec after the sort enum casing fix upstream.
+
+  os2-core#56756 changed the published `sort_by` enum on `/tokens/top`, `/tokens/trending` and `/account/{address}/tokens` from `MARKET_CAP` to `market_cap`, so the values match the examples those parameters already carried. The previous sync captured the spec before that landed, so `TokenRankingSortBy` was a union of uppercase values the published spec no longer lists.
+
+  Both spellings work against the API either way. The parameter is parsed through a converter that uppercases before `valueOf`, so casing has never affected the request; what was wrong was the SDK type and the spec disagreeing with each other.
+
+  No consumer is affected: `TokenRankingSortBy` was added in the previous sync and has not been released.
+
+- 8783ee4: `OpenSeaSDK.requestInstantApiKey` now takes the same `options` argument as the `OpenSeaAPI` static it delegates to, so an injected `fetch` reaches the request. It applies to both the ethers and viem entrypoints, and the zero- and one-argument calls are unchanged.
+
+  12.6.0 added the transport option to `OpenSeaAPI.requestInstantApiKey` but not to the SDK wrapper, which forwarded only `apiBaseUrl`. A consumer routing every request through its own transport had to drop the entrypoint the README documents and call the lower-level helper instead, and passing the option to the SDK method failed to compile with `TS2554: Expected 0-1 arguments, but got 2`. Reported in [opensea-sdk#2009](https://github.com/ProjectOpenSea/opensea-sdk/issues/2009).
+
+- Updated dependencies [a2e2cfa]
+- Updated dependencies [e1f390c]
+  - @opensea/api-types@0.11.1
+
 ## 12.6.0
 
 ### Minor Changes

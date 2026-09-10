@@ -21,6 +21,7 @@ import {
   type GetContractResponse,
   type GetNFTMetadataResponse,
   type GetNFTResponse,
+  type GetNFTsByAccountOptions,
   type ListNFTsResponse,
   type NFTOwnersArgs,
   type NftAnalyticsResponse,
@@ -77,18 +78,28 @@ export class NFTsAPI {
 
   /**
    * Fetch NFTs owned by an account.
+   *
+   * Pass `options.includeAutoHidden` to also return NFTs that were hidden
+   * automatically because a third party minted or sent them to this account.
+   * NFTs the account holder hid themselves stay out of the response either
+   * way, and this does not surface NFTs removed for policy violations.
    */
   async getNFTsByAccount(
     address: string,
     limit: number | undefined = undefined,
     next: string | undefined = undefined,
     chain = this.chain,
+    options?: GetNFTsByAccountOptions,
   ): Promise<ListNFTsResponse> {
     const response = await this.fetcher.get<ListNFTsResponse>(
       getListNFTsByAccountPath(chain, address),
       {
         limit,
         next,
+        // Snakeized to `include_auto_hidden` by the fetcher. Left undefined
+        // when the caller sets nothing, so the parameter is absent from the
+        // URL rather than sent as an explicit false.
+        includeAutoHidden: options?.includeAutoHidden,
       },
     )
 
